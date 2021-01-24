@@ -29,8 +29,6 @@ pub enum UriDestination {
     Root,
     // example.com/deeplink | deeplink | /deeplink
     SameDomain,
-    // samesub.example.com/deeplink
-    SameSubDomain,
     // diffsub.example.com/deeplink
     DifferentSubDomain,
     // https://www.end-of-the-internet.com/
