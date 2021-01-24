@@ -1,17 +1,20 @@
 use ego_tree::Tree;
-use scraper::{Html, Node};
 use scraper::node::Element;
+use scraper::{Html, Node};
+
 use crate::crawlresult::UriResult;
 
 pub fn parse_body(body: &str) -> Html {
     let dom = Html::parse_document(body);
     // print(&dom.tree);
 
-    let links = extract_links(&dom.tree);
-        links.iter().for_each(|it| println!("{:#?}", it));
-    let results: UriResult = UriResult{ links: links };
-    println!("uriResults: {:#?}", results);
-do write util um verschiedene arten urls zu parsen - tdd
+    let mut links = extract_links(&dom.tree);
+    links.sort();
+    // links.dedup();
+    links.iter().for_each(|it| println!("{:#?}", it));
+    // let results: UriResult = UriResult { links: links };
+    // println!("uriResults: {:#?}", results);
+    //TODO: do write util um verschiedene arten urls zu parsen - tdd
     dom
 }
 
@@ -24,7 +27,8 @@ fn print(node: &Tree<Node>) {
 }
 
 fn extract_links(node: &Tree<Node>) -> Vec<&str> {
-    let links: Vec<&str> = node.values()
+    let links: Vec<&str> = node
+        .values()
         .filter_map(|it| it.as_element()?.attrs().next())
         .filter(|it| it.0 == "href")
         .map(|it| it.1)
