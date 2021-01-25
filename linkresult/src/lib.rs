@@ -4,6 +4,8 @@ pub use uri_result::*;
 mod uri_result;
 
 pub fn get_uri_destination(source_domain: String, uri: String) -> Option<UriDestination> {
+
+    //TODO: use hyper::Uri
     match uri {
         uri if (uri.eq("/")) => Some(UriDestination::Root),
         uri if (uri.starts_with("mailto:")) => Some(UriDestination::Mailto),
@@ -11,6 +13,7 @@ pub fn get_uri_destination(source_domain: String, uri: String) -> Option<UriDest
         uri if (Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$").unwrap().is_match(&uri).unwrap()) => Some(UriDestination::SameDomain),
         uri if (Regex::new(&format!("^https?://{}", source_domain).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriDestination::SameDomain) }
         uri if (Regex::new(&format!("^https?://[^/=?]*\\.{}.*$", source_domain).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriDestination::DifferentSubDomain) }
+        uri if (Regex::new(&format!("^(?![a-zA-Z]+://)[^{}](?:/?(?:[^#].+))$", source_domain)).unwrap().is_match(&uri).unwrap()) => Some(UriDestination::External),
         uri if (Regex::new(&format!("^https?://[^/=?]*\\.[^{}].*", source_domain).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriDestination::External) }
         _ => None,
     }
@@ -31,6 +34,7 @@ mod tests {
             ("/agb/", UriDestination::SameDomain),
             ("/ausgabe/t3n-62-mindful-leadership/", UriDestination::SameDomain),
             ("//same-domain-deeplink/to-somewhere", UriDestination::SameDomain),
+            ("//cdn.external-domain.com/some-big-file.RAW", UriDestination::External),
             ("somefile/some.txt", UriDestination::SameDomain),
             ("http://feeds.soundcloud.com/users/soundcloud:users:213461595/sounds.rss", UriDestination::External),
             ("https://d1quwwdmdfumn6.cloudfront.net/t3n/2018/images/icons/t3n-apple-touch-120x120.png", UriDestination::External),
