@@ -2,7 +2,7 @@ use ego_tree::Tree;
 use scraper::node::Element;
 use scraper::{Html, Node};
 
-use crate::crawlresult::UriResult;
+use crate::linkresult::UriResult;
 
 pub fn parse_body(body: &str) -> Html {
     let dom = Html::parse_document(body);

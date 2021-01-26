@@ -6,7 +6,7 @@ use tokio::io::{self, AsyncWriteExt};
 
 mod dom;
 use crate::dom::parser::parse_body;
-extern crate crawlresult;
+extern crate linkresult;
 
 // A simple type alias so as to DRY.
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;

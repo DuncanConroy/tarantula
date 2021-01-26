@@ -107,14 +107,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea221b5284a47e40033bf9b66f35f984ec0ea2931eb03505246cd27a963f981b"
 
 [[package]]
-name = "crawlresult"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "fancy-regex",
-]
-
-[[package]]
 name = "cssparser"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -470,6 +462,14 @@ name = "libc"
 version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89203f3fba0a3795506acaad8ebce3c80c0af93f994d5a1d7a0b1eeb23271929"
+
+[[package]]
+name = "linkresult"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fancy-regex",
+]
 
 [[package]]
 name = "lock_api"
@@ -977,19 +977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustspider"
-version = "0.1.0"
-dependencies = [
- "crawlresult",
- "ego-tree",
- "hyper",
- "hyper-tls",
- "pretty_env_logger",
- "scraper",
- "tokio",
-]
-
-[[package]]
 name = "ryu"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1186,6 +1173,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "tarantula"
+version = "0.1.0"
+dependencies = [
+ "ego-tree",
+ "hyper",
+ "hyper-tls",
+ "linkresult",
+ "pretty_env_logger",
+ "scraper",
+ "tokio",
 ]
 
 [[package]]

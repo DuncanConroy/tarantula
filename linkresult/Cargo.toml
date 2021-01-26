@@ -1,5 +1,5 @@
 [package]
-name = "crawlresult"
+name = "linkresult"
 version = "0.1.0"
 authors = ["Daniel Bunte (@DuncanConroy) <daniel.bunte.84+github@gmail.com>"]
 edition = "2018"
