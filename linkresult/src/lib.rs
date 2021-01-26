@@ -5,15 +5,14 @@ mod uri_result;
 
 pub fn get_uri_destination(source_domain: String, uri: String) -> Option<UriDestination> {
 
-    //TODO: use hyper::Uri
     match uri {
         uri if (uri.eq("/")) => Some(UriDestination::Root),
         uri if (uri.starts_with("mailto:")) => Some(UriDestination::Mailto),
         uri if (Regex::new("^/?#").unwrap().is_match(&uri).unwrap()) => Some(UriDestination::Anchor),
+        uri if (Regex::new(&format!("^//[^{}](?:/?(?:[^#].+\\.+.*))$", source_domain)).unwrap().is_match(&uri).unwrap()) => Some(UriDestination::External),
         uri if (Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$").unwrap().is_match(&uri).unwrap()) => Some(UriDestination::SameDomain),
         uri if (Regex::new(&format!("^https?://{}", source_domain).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriDestination::SameDomain) }
         uri if (Regex::new(&format!("^https?://[^/=?]*\\.{}.*$", source_domain).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriDestination::DifferentSubDomain) }
-        uri if (Regex::new(&format!("^(?![a-zA-Z]+://)[^{}](?:/?(?:[^#].+))$", source_domain)).unwrap().is_match(&uri).unwrap()) => Some(UriDestination::External),
         uri if (Regex::new(&format!("^https?://[^/=?]*\\.[^{}].*", source_domain).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriDestination::External) }
         _ => None,
     }
