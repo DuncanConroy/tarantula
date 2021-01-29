@@ -1,16 +1,19 @@
-// use chrono::DateTime;
-//
-// struct ResponseTimings {
-//     request_start_time: DateTime,
-//     request_complete_time: DateTime,
-//     request_connection_confirmed_time: DateTime,
-// }
+use scraper::Node;
+use chrono::{DateTime,Utc};
+
+#[derive(Debug)]
+pub struct ResponseTimings {
+    request_start_time: DateTime<Utc>,
+    request_complete_time: DateTime<Utc>,
+    request_connection_confirmed_time: DateTime<Utc>,
+}
 
 #[derive(Debug)]
 pub struct Link {
     uri: String,
     belonging: UriDestination,
     protocol: UriProtocol,
+    sourceTag: Node,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,6 +44,7 @@ pub enum UriDestination {
 
 #[derive(Debug)]
 pub struct UriResult<Link> {
-    // TODO: implement -- response_timings:ResponseTimings,
+    pub root: Link,
+    pub response_timings: ResponseTimings,
     pub links: Vec<Link>,
 }

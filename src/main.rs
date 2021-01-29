@@ -4,7 +4,7 @@ use hyper::{body::HttpBody, Client};
 use hyper_tls::HttpsConnector;
 use tokio::io::{self, AsyncWriteExt};
 
-use dom_parser::parse_body;
+use dom_parser::get_links;
 
 // A simple type alias so as to DRY.
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -25,7 +25,8 @@ async fn main() -> Result<()> {
     let url = url.parse::<hyper::Uri>().unwrap();
 
     let mut body = fetch_url(&url).await?;
-    let dom = dom_parser::parse_body(&url.host().unwrap(), &mut body);
+    println!("HOST:{}", &url.host().unwrap());
+    let links = dom_parser::get_links(&url.host().unwrap(), &mut body);
 
     Ok(())
 }
@@ -40,19 +41,10 @@ async fn fetch_url(url: &hyper::Uri) -> Result<String> {
     println!("Status: {}", response.status());
     println!("Headers: {:#?}\n", response.headers());
 
-    // let body = String::from(res.data().await?.unwrap());
-    let body = String::from_utf8(hyper::body::to_bytes(response.into_body()).await?.to_vec())?;
-    // println!("BODY: {}", body);
+    let body:String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
+    println!("BODY: {}", body);
 
-    // Stream the body, writing each chunk to stdout as we get it
-    // (instead of buffering and printing at the end).
-    // while let Some(next) = res.data().await {
-    //     let chunk = next?;
-    //     io::stdout().write_all(&chunk).await?;
-    // }
-
-    // println!("\n\nDone!");
+    println!("\n\nDone!");
 
     Ok(body)
 }
-
