@@ -145,6 +145,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dom_parser"
+version = "0.1.0"
+dependencies = [
+ "ego-tree",
+ "linkresult",
+ "scraper",
+]
+
+[[package]]
 name = "dtoa"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1179,12 +1188,10 @@ dependencies = [
 name = "tarantula"
 version = "0.1.0"
 dependencies = [
- "ego-tree",
+ "dom_parser",
  "hyper",
  "hyper-tls",
- "linkresult",
  "pretty_env_logger",
- "scraper",
  "tokio",
 ]
 

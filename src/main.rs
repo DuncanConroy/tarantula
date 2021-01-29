@@ -4,9 +4,7 @@ use hyper::{body::HttpBody, Client};
 use hyper_tls::HttpsConnector;
 use tokio::io::{self, AsyncWriteExt};
 
-mod dom;
-use crate::dom::parser::parse_body;
-extern crate linkresult;
+use dom_parser::parse_body;
 
 // A simple type alias so as to DRY.
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -27,7 +25,7 @@ async fn main() -> Result<()> {
     let url = url.parse::<hyper::Uri>().unwrap();
 
     let mut body = fetch_url(url).await?;
-    let dom = parse_body(&mut body);
+    let dom = dom_parser::parse_body(&mut body);
 
     Ok(())
 }
