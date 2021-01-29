@@ -1,9 +1,9 @@
 use fancy_regex::Regex;
 pub use uri_result::*;
 
-mod uri_result;
+pub mod uri_result;
 
-pub fn get_uri_destination(source_domain: String, uri: String) -> Option<UriDestination> {
+pub fn get_uri_destination(source_domain: &str, uri: &str) -> Option<UriDestination> {
 
     match uri {
         uri if (uri.eq("/")) => Some(UriDestination::Root),
@@ -58,7 +58,7 @@ mod tests {
 
         input_to_output
             .iter()
-            .map(|it| (&it.0, &it.1, get_uri_destination(String::from("t3n.de"), String::from(it.0))))
+            .map(|it| (&it.0, &it.1, get_uri_destination("t3n.de", it.0)))
             .for_each(|it| {
                 assert_eq!(
                     it.1,

@@ -24,18 +24,18 @@ async fn main() -> Result<()> {
 
     let url = url.parse::<hyper::Uri>().unwrap();
 
-    let mut body = fetch_url(url).await?;
-    let dom = dom_parser::parse_body(&mut body);
+    let mut body = fetch_url(&url).await?;
+    let dom = dom_parser::parse_body(&url.host().unwrap(), &mut body);
 
     Ok(())
 }
 
-async fn fetch_url(url: hyper::Uri) -> Result<String> {
+async fn fetch_url(url: &hyper::Uri) -> Result<String> {
     println!("URI: {}", url);
 
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
-    let mut response = client.get(url).await?;
+    let mut response = client.get(url.clone()).await?;
 
     println!("Status: {}", response.status());
     println!("Headers: {:#?}\n", response.headers());
