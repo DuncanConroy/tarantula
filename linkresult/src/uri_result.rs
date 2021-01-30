@@ -13,7 +13,7 @@ pub struct Link {
     uri: String,
     belonging: UriDestination,
     protocol: UriProtocol,
-    sourceTag: Node,
+    source_tag: Node,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -40,6 +40,8 @@ pub enum UriDestination {
     Anchor,
     // mailto:foo.bar@example.com
     Mailto,
+    // data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP6AgAA+gD3odZZSQAAAABJRU5ErkJggg==
+    EmbeddedImage,
 }
 
 #[derive(Debug)]

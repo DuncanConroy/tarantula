@@ -8,6 +8,7 @@ pub fn get_uri_destination(source_domain: &str, uri: &str) -> Option<UriDestinat
     match uri {
         uri if (uri.eq("/")) => Some(UriDestination::Root),
         uri if (uri.starts_with("mailto:")) => Some(UriDestination::Mailto),
+        uri if (uri.starts_with("data:image/")) => Some(UriDestination::EmbeddedImage),
         uri if (Regex::new("^/?#").unwrap().is_match(&uri).unwrap()) => Some(UriDestination::Anchor),
         uri if (Regex::new(&format!("^//[^{}](?:/?(?:[^#].+\\.+.*))$", source_domain)).unwrap().is_match(&uri).unwrap()) => Some(UriDestination::External),
         uri if (Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$").unwrap().is_match(&uri).unwrap()) => Some(UriDestination::SameDomain),
@@ -23,12 +24,13 @@ mod tests {
     use super::*;
 
     #[test]
-    pub fn uri_destination_returns_correct_type() {
+    fn uri_destination_returns_correct_type() {
         let input_to_output = vec![
             ("/", Some(UriDestination::Root)),
             ("#", Some(UriDestination::Anchor)),
             ("#s-angle-down", Some(UriDestination::Anchor)),
             ("/#s-angle-down", Some(UriDestination::Anchor)),
+            ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP6AgAA+gD3odZZSQAAAABJRU5ErkJggg==", Some(UriDestination::EmbeddedImage)),
             ("/account/login?redirect=https://t3n.de/", Some(UriDestination::SameDomain)),
             ("/agb/", Some(UriDestination::SameDomain)),
             ("/ausgabe/t3n-62-mindful-leadership/", Some(UriDestination::SameDomain)),
