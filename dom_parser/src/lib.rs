@@ -1,17 +1,18 @@
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{UriResult, get_uri_destination, uri_result};
+use linkresult::{get_uri_destination, uri_result};
 
 pub fn get_links(source_domain: &str, body: &str) -> Vec<String> {
     let dom = Html::parse_document(body);
+    // println!("{:?}", dom);
     // print(&dom.tree);
 
     let mut links = extract_links(&dom.tree);
     links.sort();
     // links.dedup();
-    println!("Links total: {}", links.len());
-    links.iter().for_each(|it| println!("{:#?}", it));
+    // println!("Links total: {}", links.len());
+    // links.iter().for_each(|it| println!("{:#?}", it));
     // let results: UriResult = UriResult { links: links };
     // println!("uriResults: {:#?}", results);
     let links_this_domain: Vec<&str> = get_same_domain_links(&source_domain, &links);
@@ -40,18 +41,16 @@ pub fn get_same_domain_links<'a>(source_domain: &str, links: &Vec<&'a str>) -> V
 }
 
 fn print(node: &Tree<Node>) {
-    // let x = node;
-    // println!("{}", x)
-    let x = node.values().for_each(|it| {
+    node.values().for_each(|it| {
         println!("{:#?}", it);
     });
 }
 
 fn extract_links(node: &Tree<Node>) -> Vec<&str> {
+    let link_attribute_identifiers = vec!["href", "src", "data-src"];
     node
         .values()
-        .filter_map(|it| it.as_element()?.attrs().next())
-        .filter(|it| it.0 == "href")
+        .filter_map(|it| it.as_element()?.attrs().find(|attribute| link_attribute_identifiers.contains(&attribute.0)))
         .map(|it| it.1)
         .collect()
 }
@@ -131,9 +130,25 @@ fn extract_links(node: &Tree<Node>) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        fs::read_to_string,
+        path::PathBuf,
+    };
 
     #[test]
-    pub fn get_domain_links_returns_correct_links() {
+    fn extract_links_returns_correct_links_and_nodes() {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d = d.parent().unwrap().to_path_buf();
+        d.push("resources/test/t3n.de.html");
+        let html_file = read_to_string(&d).unwrap();
+
+        let input = Html::parse_document(html_file.as_str());
+        let result = extract_links(&input.tree);
+        assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79
+    }
+
+    #[test]
+    fn get_domain_links_returns_correct_links() {
         let all_links = vec![
             // valid, same domain: 8 elements, unsorted
             "https://t3n.de/",
@@ -182,8 +197,6 @@ mod tests {
             "mailto:support@t3n.de",
         ];
 
-        let result = get_same_domain_links("t3n.de", &all_links);
-        assert_eq!(result.len(), 8);
         let sorted_expected = vec![
             "/",
             "/account/login?redirect=https://t3n.de/",
@@ -194,6 +207,10 @@ mod tests {
             "https://t3n.de/ausgabe/t3n-59-straight-outta-office/",
             "https://t3n.de/events/",
         ];
+
+        let result = get_same_domain_links("t3n.de", &all_links);
+
+        assert_eq!(result.len(), 8);
         assert_eq!(result, sorted_expected);
     }
 }

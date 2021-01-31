@@ -28,6 +28,10 @@ async fn main() -> Result<()> {
     println!("HOST:{}", &url.host().unwrap());
     let links = dom_parser::get_links(&url.host().unwrap(), &mut body);
 
+    // links.iter()
+    //     .map(|it|it.parse::<hyper::Uri>().unwrap())
+    //     .then(|uri|fetch_url(&uri));
+
     Ok(())
 }
 
@@ -42,7 +46,7 @@ async fn fetch_url(url: &hyper::Uri) -> Result<String> {
     println!("Headers: {:#?}\n", response.headers());
 
     let body:String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
-    println!("BODY: {}", body);
+    // println!("BODY: {}", body);
 
     println!("\n\nDone!");
 
