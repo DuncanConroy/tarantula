@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
 
     let mut body = fetch_url(&url).await?;
     println!("HOST:{}", &url.host().unwrap());
-    let mut links = dom_parser::get_links(&url.host().unwrap(), &mut body);
+    let mut links = dom_parser::get_links(&url.host().unwrap(), &mut body, true);
     println!("links: {:?}", links);
 
     // let mut total_links: Vec<String>;
@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
         let item_url = item_url_string.parse::<hyper::Uri>().unwrap();
         println!("trying {}", item_url);
         let mut item_body = fetch_url(&item_url).await?;
-        let mut item_links = dom_parser::get_links(&item_url.host().unwrap(), &mut item_body);
+        let mut item_links = dom_parser::get_links(&item_url.host().unwrap(), &mut item_body, true);
         total_links.append(&mut item_links);
     }
 
@@ -83,7 +83,7 @@ async fn fetch_url(url: &hyper::Uri) -> Result<String> {
     let body: String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
     // println!("BODY: {}", body);
 
-    println!("\n\nDone!");
+    println!("\nDone!");
 
     Ok(body)
 }

@@ -3,7 +3,7 @@ use scraper::{Html, Node};
 
 use linkresult::{get_uri_destination, uri_result};
 
-pub fn get_links(source_domain: &str, body: &str) -> Vec<String> {
+pub fn get_links(source_domain: &str, body: &str, same_domain_only: bool) -> Vec<String> {
     let dom = Html::parse_document(body);
     // println!("{:?}", dom);
     // print(&dom.tree);
@@ -15,9 +15,15 @@ pub fn get_links(source_domain: &str, body: &str) -> Vec<String> {
     // links.iter().for_each(|it| println!("{:#?}", it));
     // let results: UriResult = UriResult { links: links };
     // println!("uriResults: {:#?}", results);
-    let links_this_domain: Vec<&str> = get_same_domain_links(&source_domain, &links);
-    println!("Links on this domain: {}", links_this_domain.len());
-    links_this_domain.iter().map(|it| it.to_string()).collect()
+    let result: Vec<&str> = if same_domain_only {
+        let links_this_domain: Vec<&str> = get_same_domain_links(&source_domain, &links);
+        println!("Links on this domain: {}", links_this_domain.len());
+        links_this_domain
+    } else {
+        links
+    };
+
+    result.iter().map(|it| it.to_string()).collect()
 }
 
 
@@ -55,114 +61,30 @@ fn extract_links(node: &Tree<Node>) -> Vec<&str> {
         .collect()
 }
 
-// use std::default::Default;
-// use std::iter::repeat;
-// use std::string::String;
-//
-// use html5ever::{parse_document, Parser};
-// use html5ever::tendril::TendrilSink;
-// use rcdom::{Handle, NodeData, RcDom};
-//
-// fn walk(indent: usize, handle: &Handle) {
-//     let node = handle;
-//     // FIXME: don't allocate
-//     print!("{}", repeat(" ").take(indent).collect::<String>());
-//     match node.data {
-//         NodeData::Document => println!("#Document"),
-//
-//         NodeData::Doctype {
-//             ref name,
-//             ref public_id,
-//             ref system_id,
-//         } => println!("<!DOCTYPE {} \"{}\" \"{}\">", name, public_id, system_id),
-//
-//         NodeData::Text { ref contents } => {
-//             println!("#text: {}", escape_default(&contents.borrow()))
-//         }
-//
-//         NodeData::Comment { ref contents } => println!("<!-- {} -->", escape_default(contents)),
-//
-//         NodeData::Element {
-//             ref name,
-//             ref attrs,
-//             ..
-//         } => {
-//             assert!(name.ns == ns!(html));
-//             print!("<{}", name.local);
-//             for attr in attrs.borrow().iter() {
-//                 assert!(attr.name.ns == ns!());
-//                 print!(" {}=\"{}\"", attr.name.local, attr.value);
-//             }
-//             println!(">");
-//         }
-//
-//         NodeData::ProcessingInstruction { .. } => unreachable!(),
-//     }
-//
-//     for child in node.children.borrow().iter() {
-//         walk(indent + 4, child);
-//     }
-// }
-//
-// // FIXME: Copy of str::escape_default from std, which is currently unstable
-// pub fn escape_default(s: &str) -> String {
-//     s.chars().flat_map(|c| c.escape_default()).collect()
-// }
-//
-// pub fn parse_body(input: &mut String) -> RcDom {
-//     let foo = Parser::from_utf8(Parser::new).;
-//     let dom = parse_document(RcDom::default(), Default::default())
-//         .from_utf8()
-//         .read_from(input)
-//         .unwrap();
-//     walk(0, &dom.document);
-//
-//     if !dom.errors.is_empty() {
-//         println!("\nParse errors:");
-//         for err in dom.errors.iter() {
-//             println!("    {}", err);
-//         }
-//     }
-//
-//     dom
-// }
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::{
         fs::read_to_string,
         path::PathBuf,
     };
 
-    #[test]
-    fn extract_links_returns_correct_links_and_nodes() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d = d.parent().unwrap().to_path_buf();
-        d.push("resources/test/t3n.de.html");
-        let html_file = read_to_string(&d).unwrap();
+    use super::*;
 
-        let input = Html::parse_document(html_file.as_str());
-        let result = extract_links(&input.tree);
-        assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79
-    }
-
-    #[test]
-    fn get_domain_links_returns_correct_links() {
-        let all_links = vec![
+    fn all_links<'a>() -> Vec<&'a str> {
+        let links = vec![
             // valid, same domain: 8 elements, unsorted
-            "https://t3n.de/",
-            "https://t3n.de/ausgabe/t3n-59-straight-outta-office/",
-            "/account/login?redirect=https://t3n.de/",
+            "https://example.com/",
+            "https://example.com/ausgabe/example-com-59-straight-outta-office/",
+            "/account/login?redirect=https://example.com/",
             "/",
             "/",
             "/agb/",
             "/agb/",
-            "/ausgabe/t3n-62-mindful-leadership/",
-            "/ausgabe/t3n-62-mindful-leadership/",
-            "https://t3n.de/events/",
-            "https://faq.t3n.de/",
-            "https://t3n.de/events/",
+            "/ausgabe/example-com-62-mindful-leadership/",
+            "/ausgabe/example-com-62-mindful-leadership/",
+            "https://example.com/events/",
+            "https://faq.example.com/",
+            "https://example.com/events/",
 
             // invalid &| extern
             "#",
@@ -182,35 +104,57 @@ mod tests {
             "#s-rss",
             "#s-soundcloud",
             "http://www.agof.de/",
-            "http://feeds2.feedburner.com/t3n-magazin/",
-            "https://d1quwwdmdfumn6.cloudfront.net/t3n/2018/styles/main-1610630962.css",
-            "https://getpocket.com/edit.php?url=https%3A%2F%2Ft3n.de%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dpocket%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://twitter.com/intent/tweet?text=BIZ-Chef%3A%20Das%20Bitcoin-System%20kann%20zusammenbrechen&url=https%3A%2F%2Ft3n.de%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=t3n&lang=de",
-            "https://twitter.com/intent/tweet?text=Clubnotes.io%20%E2%80%93%20so%20machst%20du%20Notizen%20in%20deinem%20Clubhouse-Talk&url=https%3A%2F%2Ft3n.de%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=t3n&lang=de",
-            "https://twitter.com/t3n",
-            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Ft3n.de%2Fnews%2Fbusiness-trends-gaming-zukunft-1350706%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Ft3n.de%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://www.facebook.com/t3nMagazin",
-            "https://www.kununu.com/de/t3n/",
-            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Ft3n.de%2Fnews%2Fcoinbase-kryptomarktplatz-direktplatzierung-boersenstart-1352871%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Ft3n.de%2Fnews%2Ftwitter-plant-facebook-1352857%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "mailto:support@t3n.de",
+            "http://feeds2.feedburner.com/example-com-magazin/",
+            "https://example-com.cloudfront.net/example-com/styles/main-1234567890.css",
+            "https://getpocket.com/edit.php?url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dpocket%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://twitter.com/intent/tweet?text=BIZ-Chef%3A%20Das%20Bitcoin-System%20kann%20zusammenbrechen&url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
+            "https://twitter.com/intent/tweet?text=Clubnotes.io%20%E2%80%93%20so%20machst%20du%20Notizen%20in%20deinem%20Clubhouse-Talk&url=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
+            "https://twitter.com/example-com",
+            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fbusiness-trends-gaming-zukunft-1350706%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://www.facebook.com/example-comMagazin",
+            "https://www.kununu.com/de/example-com/",
+            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Fcoinbase-kryptomarktplatz-direktplatzierung-boersenstart-1352871%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Ftwitter-plant-facebook-1352857%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "mailto:support@example.com",
         ];
 
+        links
+    }
+
+    #[test]
+    fn extract_links_returns_correct_links_and_nodes() {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d = d.parent().unwrap().to_path_buf();
+        d.push("resources/test/example.com.html");
+        let html_file = read_to_string(&d).unwrap();
+
+        let input = Html::parse_document(html_file.as_str());
+        let result = extract_links(&input.tree);
+        assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79
+    }
+
+    #[test]
+    fn get_links_returns_different_amount_on_same_domain_setting() {
+        // let
+    }
+
+    #[test]
+    fn get_domain_links_returns_correct_links() {
         let sorted_expected = vec![
             "/",
-            "/account/login?redirect=https://t3n.de/",
+            "/account/login?redirect=https://example.com/",
             "/agb/",
-            "/ausgabe/t3n-62-mindful-leadership/",
-            "https://faq.t3n.de/",
-            "https://t3n.de/",
-            "https://t3n.de/ausgabe/t3n-59-straight-outta-office/",
-            "https://t3n.de/events/",
+            "/ausgabe/example-com-62-mindful-leadership/",
+            "https://faq.example.com/",
+            "https://example.com/",
+            "https://example.com/ausgabe/example-com-59-straight-outta-office/",
+            "https://example.com/events/",
         ];
 
-        let result = get_same_domain_links("t3n.de", &all_links);
+        let result = get_same_domain_links("example.com", &all_links());
 
-        assert_eq!(result.len(), 8);
+        assert_eq!(result.len(), 8, "{:?}\n{:?}", result, sorted_expected);
         assert_eq!(result, sorted_expected);
     }
 }
