@@ -27,7 +27,7 @@ pub fn get_links(source_domain: &str, body: &str, same_domain_only: bool) -> Vec
 }
 
 
-pub fn get_same_domain_links<'a>(source_domain: &str, links: &Vec<&'a str>) -> Vec<&'a str> {
+fn get_same_domain_links<'a>(source_domain: &str, links: &Vec<&'a str>) -> Vec<&'a str> {
     let mut cloned_links = links.clone();
     cloned_links.sort();
     cloned_links.dedup();
@@ -135,21 +135,16 @@ mod tests {
     }
 
     #[test]
-    fn get_links_returns_different_amount_on_same_domain_setting() {
-        // let
-    }
-
-    #[test]
     fn get_domain_links_returns_correct_links() {
         let sorted_expected = vec![
             "/",
             "/account/login?redirect=https://example.com/",
             "/agb/",
             "/ausgabe/example-com-62-mindful-leadership/",
-            "https://faq.example.com/",
             "https://example.com/",
             "https://example.com/ausgabe/example-com-59-straight-outta-office/",
             "https://example.com/events/",
+            "https://faq.example.com/",
         ];
 
         let result = get_same_domain_links("example.com", &all_links());
