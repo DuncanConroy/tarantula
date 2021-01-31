@@ -1,5 +1,9 @@
 use std::env;
 
+use futures::{
+    // futures_unordered::FuturesUnordered,
+    stream::{Stream, StreamExt},
+};
 use hyper::{body::HttpBody, Client};
 use hyper_tls::HttpsConnector;
 use tokio::io::{self, AsyncWriteExt};
@@ -26,11 +30,42 @@ async fn main() -> Result<()> {
 
     let mut body = fetch_url(&url).await?;
     println!("HOST:{}", &url.host().unwrap());
-    let links = dom_parser::get_links(&url.host().unwrap(), &mut body);
+    let mut links = dom_parser::get_links(&url.host().unwrap(), &mut body);
+    println!("links: {:?}", links);
 
-    // links.iter()
-    //     .map(|it|it.parse::<hyper::Uri>().unwrap())
-    //     .then(|uri|fetch_url(&uri));
+    // let mut total_links: Vec<String>;
+    // links.iter().for_each(|it| {
+    //     let item_url = &it.parse::<hyper::Uri>().unwrap();
+    //     let mut item_body = fetch_url(item_url).await?;
+    //     let item_links = dom_parser::get_links(&item_url.host().unwrap(), &mut body);
+    // });
+
+    // let total_links = links.iter()
+    //     .map(|it| it.parse::<hyper::Uri>().unwrap())
+    //     .map(|it| fetch_url(&it.host().unwrap()))
+    //     .collect::<FuturesUnordered<_>>()
+    //     .collect::<Vec<_>>()
+    //     .await;
+
+    //TODO: recursive function, multi-threaded, return link object with metadata
+
+    let mut total_links: Vec<String> = vec![];
+    // total_links.append(&mut links);
+    for link in links {
+        // if total_links.contains(&link) {
+        //     println!("Skipping {}, as it's already a known link.", link);
+        //     continue;
+        // }
+
+        let item_url_string = "https://".to_owned() + url.host().unwrap() + &link;
+        let item_url = item_url_string.parse::<hyper::Uri>().unwrap();
+        println!("trying {}", item_url);
+        let mut item_body = fetch_url(&item_url).await?;
+        let mut item_links = dom_parser::get_links(&item_url.host().unwrap(), &mut item_body);
+        total_links.append(&mut item_links);
+    }
+
+    println!("total_links: {:?}", total_links);
 
     Ok(())
 }
@@ -45,7 +80,7 @@ async fn fetch_url(url: &hyper::Uri) -> Result<String> {
     println!("Status: {}", response.status());
     println!("Headers: {:#?}\n", response.headers());
 
-    let body:String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
+    let body: String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
     // println!("BODY: {}", body);
 
     println!("\n\nDone!");
