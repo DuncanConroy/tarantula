@@ -33,41 +33,53 @@ async fn main() -> Result<()> {
     let mut links = dom_parser::get_links(&url.host().unwrap(), &mut body, true);
     println!("links: {:?}", links);
 
-    // let mut total_links: Vec<String>;
-    // links.iter().for_each(|it| {
-    //     let item_url = &it.parse::<hyper::Uri>().unwrap();
-    //     let mut item_body = fetch_url(item_url).await?;
-    //     let item_links = dom_parser::get_links(&item_url.host().unwrap(), &mut body);
-    // });
-
-    // let total_links = links.iter()
-    //     .map(|it| it.parse::<hyper::Uri>().unwrap())
-    //     .map(|it| fetch_url(&it.host().unwrap()))
-    //     .collect::<FuturesUnordered<_>>()
-    //     .collect::<Vec<_>>()
-    //     .await;
-
     //TODO: recursive function, multi-threaded, return link object with metadata
 
-    let mut total_links: Vec<String> = vec![];
-    // total_links.append(&mut links);
+    let protocol = format!("{}://", &url.scheme().unwrap());
+    let mut known_links = vec!["/".to_string()];
+    let total_links = recursive_load_page_and_get_links(&protocol, url.host().unwrap(), &links, &mut known_links);
+
+    println!("total_links: {:?}", total_links.await?);
+
+    Ok(())
+}
+
+async fn recursive_load_page_and_get_links(protocol: &str, host: &str, links: &Vec<String>, known_links: &mut Vec<String>) -> Result<Vec<String>> {
+    let mut all_known_links: Vec<String> = vec![];
+    all_known_links.append(known_links);
+
     for link in links {
         // if total_links.contains(&link) {
         //     println!("Skipping {}, as it's already a known link.", link);
         //     continue;
         // }
 
-        let item_url_string = "https://".to_owned() + url.host().unwrap() + &link;
+        let item_url_string = create_url_string(&protocol, &host, &link);
+        println!("item_url_string {}", item_url_string);
         let item_url = item_url_string.parse::<hyper::Uri>().unwrap();
         println!("trying {}", item_url);
         let mut item_body = fetch_url(&item_url).await?;
         let mut item_links = dom_parser::get_links(&item_url.host().unwrap(), &mut item_body, true);
-        total_links.append(&mut item_links);
+        let mut links_to_visit: Vec<String> = item_links.iter()
+            .filter(|it| !all_known_links.contains(it))
+            .map(|it| it.to_string())
+            .collect();
+        println!("found {} links to visit: {:?}", links_to_visit.len(), links_to_visit);
+
+        recursive_load_page_and_get_links(protocol, host, &links_to_visit, &mut all_known_links);
+        all_known_links.append(&mut links_to_visit);
     }
 
-    println!("total_links: {:?}", total_links);
+    Ok(all_known_links)
+}
 
-    Ok(())
+fn create_url_string(protocol: &str, host: &str, link: &String) -> String {
+    println!("#-> {},{},{}",host,protocol,link);
+    if link.starts_with("http") {
+        link.to_owned ()
+    } else {
+        format!("{}{}{}", protocol, host, link)
+    }
 }
 
 async fn fetch_url(url: &hyper::Uri) -> Result<String> {
