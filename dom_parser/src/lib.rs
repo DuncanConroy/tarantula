@@ -1,47 +1,56 @@
+use chrono::{DateTime, Utc};
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{get_uri_destination, uri_result};
+use linkresult::{get_uri_scope, uri_result, UriResult, Link, UriProtocol, get_uri_protocol, ResponseTimings};
 
-pub fn get_links(source_domain: &str, body: &str, same_domain_only: bool) -> Vec<String> {
+pub fn get_links(parent_protocol: &str, parent_uri: &Option<Link>, source_domain: &str, body: &str, same_domain_only: bool, start_time: DateTime<Utc>) -> Option<UriResult> {
     let dom = Html::parse_document(body);
     // println!("{:?}", dom);
     // print(&dom.tree);
 
-    let mut links = extract_links(&dom.tree);
-    links.sort();
+    let mut links = extract_links(&parent_protocol, &source_domain, &dom.tree);
+    links.sort_by(|a, b| a.uri.cmp(&b.uri));
     // links.dedup();
     // println!("Links total: {}", links.len());
     // links.iter().for_each(|it| println!("{:#?}", it));
     // let results: UriResult = UriResult { links: links };
     // println!("uriResults: {:#?}", results);
-    let result: Vec<&str> = if same_domain_only {
-        let links_this_domain: Vec<&str> = get_same_domain_links(&source_domain, &links);
+    let result: Vec<Link> = if same_domain_only {
+        let links_this_domain = get_same_domain_links(&source_domain, &links);
         println!("Links on this domain: {}", links_this_domain.len());
         links_this_domain
     } else {
         links
     };
 
-    result.iter().map(|it| it.to_string()).collect()
+    let timings = ResponseTimings {
+        request_start_time: start_time,
+        parse_complete_time: None,
+        request_complete_time: None,
+        request_connection_confirmed_time: None,
+    };
+    Some(UriResult {
+        links: result,
+        parent: parent_uri.to_owned(),
+        response_timings: timings,
+    })
 }
 
 
-fn get_same_domain_links<'a>(source_domain: &str, links: &Vec<&'a str>) -> Vec<&'a str> {
+fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
     let mut cloned_links = links.clone();
-    cloned_links.sort();
-    cloned_links.dedup();
+    cloned_links.sort_by(|a, b| a.uri.cmp(&b.uri));
+    cloned_links.dedup_by(|a, b| a.uri.eq(&b.uri));
     cloned_links
         .iter()
-        .map(|it| (it, get_uri_destination(source_domain, it)))
-        .filter(|it| it.1.is_some())
-        .filter(|it| match it.1.as_ref().unwrap() {
-            uri_result::UriDestination::Root |
-            uri_result::UriDestination::SameDomain |
-            uri_result::UriDestination::DifferentSubDomain => true,
-            _ => false
+        .map(|it| (it, get_uri_scope(source_domain, it.uri.as_str())))
+        .filter_map(|it| match it.1 {
+            Some(uri_result::UriScope::Root) |
+            Some(uri_result::UriScope::SameDomain) |
+            Some(uri_result::UriScope::DifferentSubDomain) => Some(it.0),
+            _ => None
         })
-        .map(|it| it.0)
         .cloned()
         .collect()
 }
@@ -52,12 +61,19 @@ fn print(node: &Tree<Node>) {
     });
 }
 
-fn extract_links(node: &Tree<Node>) -> Vec<&str> {
+fn extract_links<'a>(parent_protocol: &str, source_domain: &str, node: &'a Tree<Node>) -> Vec<Link> {
     let link_attribute_identifiers = vec!["href", "src", "data-src"];
     node
         .values()
-        .filter_map(|it| it.as_element()?.attrs().find(|attribute| link_attribute_identifiers.contains(&attribute.0)))
-        .map(|it| it.1)
+        .filter_map(|current_node| {
+            let (_, link) = current_node.as_element()?.attrs().find(|attribute| link_attribute_identifiers.contains(&attribute.0))?;
+            Some(Link {
+                uri: link.to_string(),
+                scope: get_uri_scope(&source_domain, &link),
+                protocol: get_uri_protocol(&parent_protocol, &link),
+                source_tag: Some(current_node.to_owned ()),
+            })
+        })
         .collect()
 }
 
@@ -122,6 +138,12 @@ mod tests {
         links
     }
 
+    fn str_to_links(links: Vec<&str>) -> &Vec<Link> {
+        links.iter()
+            .map(|it| Link::from_str(it))
+            .collect()
+    }
+
     #[test]
     fn extract_links_returns_correct_links_and_nodes() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -130,7 +152,7 @@ mod tests {
         let html_file = read_to_string(&d).unwrap();
 
         let input = Html::parse_document(html_file.as_str());
-        let result = extract_links(&input.tree);
+        let result = extract_links("https", "www.example.com", &input.tree)?;
         assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79
     }
 
@@ -147,7 +169,7 @@ mod tests {
             "https://faq.example.com/",
         ];
 
-        let result = get_same_domain_links("example.com", &all_links());
+        let result = get_same_domain_links("example.com", str_to_links(all_links()));
 
         assert_eq!(result.len(), 8, "{:?}\n{:?}", result, sorted_expected);
         assert_eq!(result, sorted_expected);
