@@ -1,6 +1,5 @@
 use fancy_regex::Regex;
 use fancy_regex::escape;
-use rand::Rng;
 pub use uri_result::*;
 
 pub mod uri_result;

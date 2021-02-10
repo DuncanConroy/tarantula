@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{get_uri_scope, uri_result, UriResult, Link, UriProtocol, get_uri_protocol, ResponseTimings};
+use linkresult::{get_uri_scope, uri_result, UriResult, Link, get_uri_protocol, ResponseTimings};
 
 pub fn get_links(parent_protocol: &str, parent_uri: Option<Link>, source_domain: &str, body: &str, same_domain_only: bool, start_time: DateTime<Utc>) -> Option<UriResult> {
     let dom = Html::parse_document(body);
@@ -55,11 +55,11 @@ fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
         .collect()
 }
 
-fn print(node: &Tree<Node>) {
-    node.values().for_each(|it| {
-        println!("{:#?}", it);
-    });
-}
+// fn print(node: &Tree<Node>) {
+//     node.values().for_each(|it| {
+//         println!("{:#?}", it);
+//     });
+// }
 
 fn extract_links<'a>(parent_protocol: &str, source_domain: &str, node: &'a Tree<Node>) -> Vec<Link> {
     let link_attribute_identifiers = vec!["href", "src", "data-src"];

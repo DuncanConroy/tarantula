@@ -1,25 +1,14 @@
 use std::env;
 
-use futures::{
-    stream::{Stream},
-};
 use async_recursion::async_recursion;
-use chrono::{DateTime, Utc};
-use hyper::{body::HttpBody, Body, Client, Uri, Request};
+use chrono::{Utc};
+use hyper::{Body, Client, Uri, Request};
 use hyper_tls::HttpsConnector;
-use tokio::io::{self, AsyncWriteExt};
 
-use dom_parser::{
-    get_links,
-};
 use linkresult::{
     Link,
     UriResult,
 };
-use std::time::Instant;
-use futures::future::BoxFuture;
-use std::error::Error;
-use std::borrow::BorrowMut;
 
 // A simple type alias so as to DRY.
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -43,7 +32,7 @@ async fn main() -> Result<()> {
     let mut body = fetch_url(&url).await?;
     println!("HOST:{}", &url.host().unwrap());
     let protocol = format!("{}://", &url.scheme().unwrap());
-    let mut uri_result: UriResult = dom_parser::get_links(
+    let uri_result: UriResult = dom_parser::get_links(
         protocol.as_str(),
         None,
         &url.host().unwrap(),
@@ -55,7 +44,7 @@ async fn main() -> Result<()> {
 
     //TODO: recursive function, multi-threaded, return link object with metadata, response timings
 
-    let mut known_links = vec![Link::from_str("/")];
+    let known_links = vec![Link::from_str("/")];
     let parent_uri = Some(Link::from_str(url.host().unwrap()));
     let total_links = recursive_load_page_and_get_links(
         LoadPageArguments {
@@ -130,7 +119,7 @@ async fn find_links_to_visit(parent_protocol: &str, parent_uri: Option<Link>, al
         Utc::now(),
     ).unwrap();
 
-    let mut links_to_visit: Vec<Link> = uri_result.links.iter()
+    let links_to_visit: Vec<Link> = uri_result.links.iter()
         .filter(|it| !all_known_links.contains(&it))
         .map(|it| it)
         .cloned()
@@ -172,7 +161,7 @@ async fn fetch_url(url: &hyper::Uri) -> Result<String> {
         return Ok(String::from(""));
     }
 
-    let mut response = client.get(url.clone()).await?;
+    let response = client.get(url.clone()).await?;
 
     println!("Status: {}", response.status());
     println!("Headers: {:#?}\n", response.headers());
