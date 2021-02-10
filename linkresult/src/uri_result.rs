@@ -14,11 +14,11 @@ impl ResponseTimings {
         self.request_complete_time = Some(time);
     }
 
-    fn set_request_connection_confirmed_time(&mut self, time:DateTime<Utc>) {
+    fn set_request_connection_confirmed_time(&mut self, time: DateTime<Utc>) {
         self.request_connection_confirmed_time = Some(time);
     }
 
-    fn set_parse_complete_time(&mut self, time: DateTime<Utc>){
+    fn set_parse_complete_time(&mut self, time: DateTime<Utc>) {
         self.parse_complete_time = Some(time);
     }
 }
@@ -41,6 +41,9 @@ impl Link {
         }
     }
 }
+
+unsafe impl Send for Link {}
+unsafe impl Sync for Link {}
 
 impl PartialEq for Link {
     fn eq(&self, other: &Self) -> bool {

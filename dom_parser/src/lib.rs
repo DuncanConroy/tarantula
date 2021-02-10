@@ -4,7 +4,7 @@ use scraper::{Html, Node};
 
 use linkresult::{get_uri_scope, uri_result, UriResult, Link, UriProtocol, get_uri_protocol, ResponseTimings};
 
-pub fn get_links(parent_protocol: &str, parent_uri: &Option<Link>, source_domain: &str, body: &str, same_domain_only: bool, start_time: DateTime<Utc>) -> Option<UriResult> {
+pub fn get_links(parent_protocol: &str, parent_uri: Option<Link>, source_domain: &str, body: &str, same_domain_only: bool, start_time: DateTime<Utc>) -> Option<UriResult> {
     let dom = Html::parse_document(body);
     // println!("{:?}", dom);
     // print(&dom.tree);
