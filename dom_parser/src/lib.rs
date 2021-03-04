@@ -4,12 +4,13 @@ use scraper::{Html, Node};
 
 use linkresult::{get_uri_scope, uri_result, UriResult, Link, get_uri_protocol, ResponseTimings};
 
-pub fn get_links(parent_protocol: &str, parent_uri: Option<Link>, source_domain: &str, body: &str, same_domain_only: bool, start_time: DateTime<Utc>) -> Option<UriResult> {
+pub fn get_links(parent_protocol: &str, parent_uri: Option<Link>, source_domain: &str, body: &str, same_domain_only: bool, mut response_timings: ResponseTimings) -> Option<UriResult> {
     let dom = Html::parse_document(body);
     // println!("{:?}", dom);
     // print(&dom.tree);
 
     let mut links = extract_links(&parent_protocol, &source_domain, &dom.tree);
+    response_timings.parse_complete_time = Some(Utc::now());
     links.sort_by(|a, b| a.uri.cmp(&b.uri));
     // links.dedup();
     // println!("Links total: {}", links.len());
@@ -24,16 +25,10 @@ pub fn get_links(parent_protocol: &str, parent_uri: Option<Link>, source_domain:
         links
     };
 
-    let timings = ResponseTimings {
-        request_start_time: start_time,
-        parse_complete_time: None,
-        request_complete_time: None,
-        request_connection_confirmed_time: None,
-    };
     Some(UriResult {
         links: result,
         parent: parent_uri.to_owned(),
-        response_timings: timings,
+        response_timings,
     })
 }
 

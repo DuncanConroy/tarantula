@@ -5,17 +5,12 @@ use chrono::{DateTime, Utc};
 pub struct ResponseTimings {
     pub request_start_time: DateTime<Utc>,
     pub request_complete_time: Option<DateTime<Utc>>,
-    pub request_connection_confirmed_time: Option<DateTime<Utc>>,
     pub parse_complete_time: Option<DateTime<Utc>>,
 }
 
 impl ResponseTimings {
     fn set_complete_time(&mut self, time: DateTime<Utc>) {
         self.request_complete_time = Some(time);
-    }
-
-    fn set_request_connection_confirmed_time(&mut self, time: DateTime<Utc>) {
-        self.request_connection_confirmed_time = Some(time);
     }
 
     fn set_parse_complete_time(&mut self, time: DateTime<Utc>) {

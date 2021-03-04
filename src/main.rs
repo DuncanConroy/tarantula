@@ -5,10 +5,7 @@ use chrono::{Utc};
 use hyper::{Body, Client, Uri, Request};
 use hyper_tls::HttpsConnector;
 
-use linkresult::{
-    Link,
-    UriResult,
-};
+use linkresult::{Link, UriResult, ResponseTimings};
 
 // A simple type alias so as to DRY.
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -30,6 +27,11 @@ async fn main() -> Result<()> {
     let url = url.parse::<hyper::Uri>().unwrap();
 
     let mut body = fetch_url(&url).await?;
+    let response_timings = ResponseTimings {
+        request_start_time: start_time,
+        parse_complete_time: None,
+        request_complete_time: Some(Utc::now()),
+    };
     println!("HOST:{}", &url.host().unwrap());
     let protocol = format!("{}://", &url.scheme().unwrap());
     let uri_result: UriResult = dom_parser::get_links(
@@ -38,7 +40,7 @@ async fn main() -> Result<()> {
         &url.host().unwrap(),
         &mut body,
         true,
-        start_time,
+        response_timings,
     ).unwrap();
     println!("links: {:?}", uri_result);
 
@@ -104,7 +106,13 @@ async fn recursive_load_page_and_get_links(load_page_arguments: LoadPageArgument
 }
 
 async fn find_links_to_visit(parent_protocol: &str, parent_uri: Option<Link>, all_known_links: Vec<Link>, item_url: Uri) -> Result<Vec<Link>> {
+    let request_start_time = Utc::now();
     let mut item_body = fetch_url(&item_url).await?;
+    let response_timings = ResponseTimings {
+        request_start_time,
+        parse_complete_time: None,
+        request_complete_time: Some(Utc::now()),
+    };
     if item_body.is_empty() {
         println!("No body found, now HTML to parse -> skipping");
         return Ok(Vec::<Link>::new());
@@ -116,7 +124,7 @@ async fn find_links_to_visit(parent_protocol: &str, parent_uri: Option<Link>, al
         &item_url.host().unwrap(),
         &mut item_body,
         true,
-        Utc::now(),
+        response_timings,
     ).unwrap();
 
     let links_to_visit: Vec<Link> = uri_result.links.iter()
@@ -163,13 +171,13 @@ async fn fetch_url(url: &hyper::Uri) -> Result<String> {
 
     let response = client.get(url.clone()).await?;
 
-    println!("Status: {}", response.status());
-    println!("Headers: {:#?}\n", response.headers());
+    // println!("Status: {}", response.status());
+    // println!("Headers: {:#?}\n", response.headers());
 
     let body: String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
     // println!("BODY: {}", body);
 
-    println!("\nDone!");
+    // println!("\nDone!");
 
     Ok(body)
 }
