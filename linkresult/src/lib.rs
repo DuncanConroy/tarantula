@@ -40,6 +40,7 @@ pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol>
 mod tests {
     use super::*;
     use rand::distributions::Alphanumeric;
+    use rand::Rng;
 
     #[test]
     fn get_uri_scope_returns_correct_type() {

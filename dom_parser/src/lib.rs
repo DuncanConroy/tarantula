@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{Utc};
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
@@ -66,7 +66,7 @@ fn extract_links<'a>(parent_protocol: &str, source_domain: &str, node: &'a Tree<
                 uri: link.to_string(),
                 scope: get_uri_scope(&source_domain, &link),
                 protocol: get_uri_protocol(&parent_protocol, &link),
-                source_tag: Some(current_node.to_owned ()),
+                source_tag: Some(current_node.to_owned()),
             })
         })
         .collect()
@@ -133,7 +133,7 @@ mod tests {
         links
     }
 
-    fn str_to_links(links: Vec<&str>) -> &Vec<Link> {
+    fn str_to_links(links: Vec<&str>) -> Vec<Link> {
         links.iter()
             .map(|it| Link::from_str(it))
             .collect()
@@ -147,7 +147,7 @@ mod tests {
         let html_file = read_to_string(&d).unwrap();
 
         let input = Html::parse_document(html_file.as_str());
-        let result = extract_links("https", "www.example.com", &input.tree)?;
+        let result = extract_links("https", "www.example.com", &input.tree);
         assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79
     }
 
@@ -164,9 +164,10 @@ mod tests {
             "https://faq.example.com/",
         ];
 
-        let result = get_same_domain_links("example.com", str_to_links(all_links()));
+        let result = get_same_domain_links("example.com", &str_to_links(all_links()));
 
         assert_eq!(result.len(), 8, "{:?}\n{:?}", result, sorted_expected);
-        assert_eq!(result, sorted_expected);
+        let result_strings: Vec<&String> = result.iter().map(|it| &it.uri).collect();
+        assert_eq!(result_strings, sorted_expected);
     }
 }

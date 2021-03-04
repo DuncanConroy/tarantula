@@ -8,24 +8,16 @@ use hyper_tls::HttpsConnector;
 use linkresult::{Link, UriResult, ResponseTimings};
 
 // A simple type alias so as to DRY.
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> DynResult<()> {
     pretty_env_logger::init();
 
-    // Some simple CLI args requirements...
-    let url = match env::args().nth(1) {
-        Some(url) => url,
-        None => {
-            println!("Usage: client <url>");
-            return Ok(());
-        }
-    };
+    let url = parse_url_from_args()?;
 
+    // todo: implement a page object in order to save all relevant information
     let start_time = Utc::now();
-    let url = url.parse::<hyper::Uri>().unwrap();
-
     let mut body = fetch_url(&url).await?;
     let response_timings = ResponseTimings {
         request_start_time: start_time,
@@ -63,6 +55,14 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn parse_url_from_args() -> Result<Uri, &'static str> {
+    // Some simple CLI args requirements...
+    match env::args().nth(1) {
+        None => Err("Usage: client <url>"),
+        Some(url) => Ok(url.parse::<hyper::Uri>().unwrap()),
+    }
+}
+
 struct LoadPageArguments {
     parent_protocol: String,
     parent_uri: Option<Link>,
@@ -74,7 +74,7 @@ struct LoadPageArguments {
 unsafe impl Send for LoadPageArguments {}
 
 #[async_recursion]
-async fn recursive_load_page_and_get_links(load_page_arguments: LoadPageArguments) -> Result<Vec<Link>> {
+async fn recursive_load_page_and_get_links(load_page_arguments: LoadPageArguments) -> DynResult<Vec<Link>> {
     let mut all_known_links: Vec<Link> = vec![];
     all_known_links.append(&mut load_page_arguments.known_links.clone());
 
@@ -105,7 +105,7 @@ async fn recursive_load_page_and_get_links(load_page_arguments: LoadPageArgument
     Ok(all_known_links)
 }
 
-async fn find_links_to_visit(parent_protocol: &str, parent_uri: Option<Link>, all_known_links: Vec<Link>, item_url: Uri) -> Result<Vec<Link>> {
+async fn find_links_to_visit(parent_protocol: &str, parent_uri: Option<Link>, all_known_links: Vec<Link>, item_url: Uri) -> DynResult<Vec<Link>> {
     let request_start_time = Utc::now();
     let mut item_body = fetch_url(&item_url).await?;
     let response_timings = ResponseTimings {
@@ -144,7 +144,7 @@ fn create_url_string(protocol: &str, host: &str, link: &String) -> String {
     }
 }
 
-async fn fetch_url(url: &hyper::Uri) -> Result<String> {
+async fn fetch_url(url: &hyper::Uri) -> DynResult<String> {
     println!("URI: {}", url);
 
     let https = HttpsConnector::new();
