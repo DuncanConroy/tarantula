@@ -1,5 +1,5 @@
-use scraper::Node;
 use chrono::{DateTime, Utc};
+use scraper::Node;
 
 #[derive(Debug)]
 pub struct ResponseTimings {
@@ -9,6 +9,14 @@ pub struct ResponseTimings {
 }
 
 impl ResponseTimings {
+    pub fn new() -> ResponseTimings {
+        ResponseTimings {
+            request_start_time: Utc::now(),
+            request_complete_time: None,
+            parse_complete_time: None,
+        }
+    }
+
     fn set_complete_time(&mut self, time: DateTime<Utc>) {
         self.request_complete_time = Some(time);
     }
@@ -38,6 +46,7 @@ impl Link {
 }
 
 unsafe impl Send for Link {}
+
 unsafe impl Sync for Link {}
 
 impl PartialEq for Link {

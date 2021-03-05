@@ -1,3 +1,5 @@
+mod lib;
+
 use std::env;
 
 use async_recursion::async_recursion;
