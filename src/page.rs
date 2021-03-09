@@ -24,8 +24,8 @@ impl Page {
     }
 
     pub async fn set_response(&mut self, response: Response<Body>) {
-        let transform = async |it| String::from_utf8_lossy(hyper::body::to_bytes(it).await.unwrap().as_ref()).to_string();
-        self.response = response.map(transform);
+        let (parts, body) = response.into_parts();
+        self.response = Response::from_parts(parts, String::from_utf8_lossy(hyper::body::to_bytes(body).await.unwrap().as_ref()).to_string());
     }
 
     pub fn get_response(&self) -> &Response<String> {
@@ -43,7 +43,7 @@ impl Page {
     pub fn get_content_type(&self) -> Option<&str> {
         if let Some(content_type) = self.response.headers().get("content-type") {
             if let Ok(str) = content_type.to_str() {
-                Some(str)
+                return Some(str);
             }
         }
         None
@@ -53,7 +53,7 @@ impl Page {
         self.response.status()
     }
 
-    pub fn get_links(&self) -> Vec<Uri> {
-        self.descendants.iter().map(|it| it.uri).collect()
+    pub fn get_links(&self) -> Vec<&Uri> {
+        self.descendants.iter().map(|it| &it.uri).collect()
     }
 }
