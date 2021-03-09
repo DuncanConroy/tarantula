@@ -1,21 +1,29 @@
-mod lib;
-
 use std::env;
 
 use async_recursion::async_recursion;
 use chrono::{Utc};
-use hyper::{Body, Client, Uri, Request};
-use hyper_tls::HttpsConnector;
+use hyper::{Uri};
 
 use linkresult::{Link, UriResult, ResponseTimings};
 
-// A simple type alias so as to DRY.
-type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+mod lib;
+use lib::*;
+use crate::page::Page;
+
+fn main2() {
+    let mut page = Page::new(parse_url_from_args()?);
+    page.response_timings.request_start_time = Utc::now();
+    fetch_page(&mut page);
+    println!(page)
+}
 
 #[tokio::main]
 async fn main() -> DynResult<()> {
     pretty_env_logger::init();
 
+    main2();
+    return OK(());
+////
     let url = parse_url_from_args()?;
 
     // todo: implement a page object in order to save all relevant information
@@ -144,42 +152,4 @@ fn create_url_string(protocol: &str, host: &str, link: &String) -> String {
     } else {
         format!("{}{}{}", protocol, host, link)
     }
-}
-
-async fn fetch_url(url: &hyper::Uri) -> DynResult<String> {
-    println!("URI: {}", url);
-
-    let https = HttpsConnector::new();
-    let client = Client::builder().build::<_, hyper::Body>(https);
-
-    let req = Request::builder()
-        .method("HEAD")
-        .uri(url)
-        .body(Body::from(""))
-        .expect("HEAD request builder");
-
-    let head = client.request(req).await?;
-    if !head.status().is_success() {
-        return Ok(String::from(""));
-        // todo: should be in metadata/response
-    }
-    let content_type =head.headers().get("content-type");
-    if content_type.is_none() {
-        return Err(format!("No content-type header found! {:?}", head).into());
-    }
-    if !content_type.unwrap().to_str().unwrap().to_string().contains("text/html") {
-        return Ok(String::from(""));
-    }
-
-    let response = client.get(url.clone()).await?;
-
-    // println!("Status: {}", response.status());
-    // println!("Headers: {:#?}\n", response.headers());
-
-    let body: String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
-    // println!("BODY: {}", body);
-
-    // println!("\nDone!");
-
-    Ok(body)
 }

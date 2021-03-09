@@ -1,34 +1,83 @@
 use linkresult::{Link, ResponseTimings};
-use hyper::{Response, Body, StatusCode, Uri};
+use hyper::{Client, Request, Response, Body, StatusCode, Uri};
 use hyper::http::HeaderValue;
+use hyper_tls::HttpsConnector;
+use crate::page::Page;
+use hyper::body::HttpBody;
 
-pub struct Page {
-    pub uri: Uri,
-    pub links: Vec<Link>,
-    pub response: Response<Body>,
-    pub response_timings: ResponseTimings,
-    pub parent: Box<Option<Page>>,
+pub mod page;
+
+// A simple type alias so as to DRY.
+pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+pub async fn fetch_url(url: &hyper::Uri) -> DynResult<String> {
+    println!("URI: {}", url);
+
+    let https = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(https);
+
+    let req = Request::builder()
+        .method("HEAD")
+        .uri(url)
+        .body(Body::from(""))
+        .expect("HEAD request builder");
+
+    let head = client.request(req).await?;
+    if !head.status().is_success() {
+        return Ok(String::from(""));
+        // todo: should be in metadata/response
+    }
+    let content_type = head.headers().get("content-type");
+    if content_type.is_none() {
+        return Err(format!("No content-type header found! {:?}", head).into());
+    }
+    if !content_type.unwrap().to_str().unwrap().to_string().contains("text/html") {
+        return Ok(String::from(""));
+    }
+
+    let response = client.get(url.clone()).await?;
+
+    // println!("Status: {}", response.status());
+    // println!("Headers: {:#?}\n", response.headers());
+
+    let body: String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref()).to_string();
+    // println!("BODY: {}", body);
+
+    // println!("\nDone!");
+
+    Ok(body)
 }
 
-impl Page {
-    pub fn new(uri: Uri) -> Page {
-        Page {
-            uri,
-            links: vec![],
-            response: Default::default(),
-            response_timings: ResponseTimings::new(),
-            parent: Box::new(None),
-        }
-    }
-    pub fn get_content_length(&self) -> usize {
-        self.response.headers().get("content-length").unwrap().to_str().unwrap().parse().unwrap()
+pub async fn fetch_page(page: &mut Page) -> DynResult<String> {
+    println!("URI: {}", page.uri);
+
+    let https = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(https);
+
+    let req = Request::builder()
+        .method("HEAD")
+        .uri(&page.uri)
+        .body(Body::from(""))
+        .expect("HEAD request builder");
+
+    let head = client.request(req).await?;
+    if !head.status().is_success() {
+        page.set_response(head);
+        return Err(format!("HTTP Status: {}", page.get_response().status()).into());
     }
 
-    pub fn get_content_type(&self) -> &str {
-        self.response.headers().get("content-type").unwrap().to_str().unwrap()
+    if let Some(content_type) = page.get_content_type() {
+        if !content_type.contains("text/html") { return Err(format!("Content-Type: {}", content_type).into()); }
+
+        page.set_response(client.get(page.uri.clone()).await?);
+
+        // println!("Status: {}", response.status());
+        // println!("Headers: {:#?}\n", response.headers());
+
+        // println!("BODY: {}", body);
+
+        // println!("\nDone!");
     }
 
-    pub fn get_status_code(&self) -> StatusCode {
-        self.response.status()
-    }
+    Ok(String::from(""))
 }
