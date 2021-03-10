@@ -1,9 +1,9 @@
-use linkresult::{Link, ResponseTimings};
-use hyper::{Client, Request, Response, Body, StatusCode, Uri};
+use hyper::{Body, Client, Request, Response, StatusCode, Uri};
+use hyper::body::HttpBody;
 use hyper::http::HeaderValue;
 use hyper_tls::HttpsConnector;
-use crate::page::Page;
-use hyper::body::HttpBody;
+use linkresult::{Link, ResponseTimings};
+use page::Page;
 
 pub mod page;
 

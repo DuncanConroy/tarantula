@@ -1,20 +1,20 @@
 use std::env;
 
 use async_recursion::async_recursion;
-use chrono::{Utc};
-use hyper::{Uri};
+use chrono::Utc;
+use hyper::Uri;
 
-use linkresult::{Link, UriResult, ResponseTimings};
+use linkresult::{Link, ResponseTimings, UriResult};
+use page::*;
+use lib::*;
 
 mod lib;
-use lib::*;
-use crate::page::Page;
 
 fn main2() {
-    let mut page = Page::new(parse_url_from_args()?);
+    let mut page = Page::new(parse_url_from_args().unwrap());
     page.response_timings.request_start_time = Utc::now();
     fetch_page(&mut page);
-    println!(page)
+    println!("{:?}", page)
 }
 
 #[tokio::main]
@@ -22,7 +22,7 @@ async fn main() -> DynResult<()> {
     pretty_env_logger::init();
 
     main2();
-    return OK(());
+    return Ok(());
 ////
     let url = parse_url_from_args()?;
 
