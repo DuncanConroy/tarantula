@@ -1,6 +1,6 @@
 use async_recursion::async_recursion;
 use chrono::Utc;
-use hyper::{Body, Client, Request};
+use hyper::{Body, Client, Request, Uri};
 use hyper_tls::HttpsConnector;
 use linkresult::{Link, UriResult};
 use page::Page;
@@ -59,7 +59,7 @@ pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send 
 //     Ok(body)
 // }
 
-pub async fn fetch_page(page: &mut Page<'_>) -> DynResult<()> {
+pub async fn fetch_page(page: &mut Page<'_>, uri: Uri) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     println!("URI: {}", page.link.uri);
 
@@ -68,7 +68,7 @@ pub async fn fetch_page(page: &mut Page<'_>) -> DynResult<()> {
 
     let req = Request::builder()
         .method("HEAD")
-        .uri(&page.get_uri())
+        .uri(&uri)
         .body(Body::from(""))
         .expect("HEAD request builder");
 
@@ -86,7 +86,7 @@ pub async fn fetch_page(page: &mut Page<'_>) -> DynResult<()> {
     }
 
     page.response_timings.get_request_start_time = Some(Utc::now());
-    page.set_response(client.get(page.get_uri()).await?).await;
+    page.set_response(client.get(uri).await?).await;
     page.response_timings.get_request_complete_time = Some(Utc::now());
 
     if let Some(content_type) = page.get_content_type() {
@@ -126,12 +126,13 @@ pub async fn recursive_load_page_and_get_links<'a>(
         &load_page_arguments.page.link.uri,
     );
     println!("item_url_string {}", item_url_string);
-    let item_url = item_url_string.parse::<hyper::Uri>().unwrap();
-    println!("trying {}", item_url);
+    let item_uri = item_url_string.parse::<hyper::Uri>().unwrap();
+    println!("trying {}", item_uri);
     let mut links_to_visit: Vec<Link> = find_links_to_visit2(
         &load_page_arguments.page,
         all_known_links.clone(),
         &mut load_page_arguments.page.clone(),
+        item_uri,
         load_page_arguments.same_domain_only,
     )
     .await?;
@@ -148,8 +149,6 @@ pub async fn recursive_load_page_and_get_links<'a>(
         links_to_visit
     );
 
-    all_known_links.append(&mut links_to_visit);
-
     if let Some(descendants) = load_page_arguments.page.descendants.clone() {
         for element in descendants {
             let mut current_page: Page = element;
@@ -160,15 +159,17 @@ pub async fn recursive_load_page_and_get_links<'a>(
                 &current_page.link.uri,
             );
             println!("item_url_string {}", item_url_string);
-            let item_url = item_url_string.parse::<hyper::Uri>().unwrap();
-            println!("trying {}", item_url);
+            let item_uri = item_url_string.parse::<hyper::Uri>().unwrap();
+            println!("trying {}", item_uri);
             let mut links_to_visit: Vec<Link> = find_links_to_visit2(
                 &load_page_arguments.page,
                 all_known_links.clone(),
                 &mut current_page,
+                item_uri,
                 load_page_arguments.same_domain_only,
             )
-            .await?;
+            .await
+            .unwrap();
             current_page.descendants = Some(
                 links_to_visit
                     .iter()
@@ -205,9 +206,10 @@ async fn find_links_to_visit2<'a>(
     parent_page: &Page<'a>,
     all_known_links: Vec<Link>,
     page_to_process: &mut Page<'a>,
+    uri: Uri,
     same_domain_only: bool,
 ) -> DynResult<Vec<Link>> {
-    fetch_page(page_to_process).await?;
+    fetch_page(page_to_process, uri).await?;
     let mut item_body = page_to_process.get_body().as_ref().unwrap().clone();
     page_to_process.response_timings.overall_complete_time = Some(Utc::now());
     if item_body.is_empty() {
