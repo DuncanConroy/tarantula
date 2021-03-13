@@ -273,10 +273,10 @@ async fn find_links_to_visit2<'a>(
 // }
 
 fn create_url_string(protocol: &str, host: &str, link: &String) -> String {
-    println!("#-> {},{},{}", host, protocol, link);
+    println!("#-> {},{},{}", protocol, host, link);
     if link.starts_with("http") {
         link.to_owned()
     } else {
-        format!("{}{}{}", protocol, host, link)
+        format!("{}://{}{}", protocol, host, link)
     }
 }
