@@ -1,17 +1,21 @@
-use chrono::{Utc};
+use chrono::Utc;
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{get_uri_scope, uri_result, UriResult, Link, get_uri_protocol, ResponseTimings};
+use linkresult::{get_uri_protocol, get_uri_scope, uri_result, Link, UriResult};
 
-pub fn get_links(parent_protocol: &str, parent_uri: Option<Link>, source_domain: &str, body: &str,
-                 same_domain_only: bool, mut response_timings: ResponseTimings) -> Option<UriResult> {
+pub fn get_links(
+    parent_protocol: &str,
+    source_domain: &str,
+    body: &str,
+    same_domain_only: bool,
+) -> Option<UriResult> {
     let dom = Html::parse_document(body);
     // println!("{:?}", dom);
     // print(&dom.tree);
 
     let mut links = extract_links(&parent_protocol, &source_domain, &dom.tree);
-    response_timings.parse_complete_time = Some(Utc::now());
+    let parse_complete_time = Utc::now();
     links.sort_by(|a, b| a.uri.cmp(&b.uri));
     // links.dedup();
     // println!("Links total: {}", links.len());
@@ -28,11 +32,9 @@ pub fn get_links(parent_protocol: &str, parent_uri: Option<Link>, source_domain:
 
     Some(UriResult {
         links: result,
-        parent: parent_uri.to_owned(),
-        response_timings,
+        parse_complete_time,
     })
 }
-
 
 fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
     let mut cloned_links = links.clone();
@@ -42,10 +44,10 @@ fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
         .iter()
         .map(|it| (it, get_uri_scope(source_domain, it.uri.as_str())))
         .filter_map(|it| match it.1 {
-            Some(uri_result::UriScope::Root) |
-            Some(uri_result::UriScope::SameDomain) |
-            Some(uri_result::UriScope::DifferentSubDomain) => Some(it.0),
-            _ => None
+            Some(uri_result::UriScope::Root)
+            | Some(uri_result::UriScope::SameDomain)
+            | Some(uri_result::UriScope::DifferentSubDomain) => Some(it.0),
+            _ => None,
         })
         .cloned()
         .collect()
@@ -57,12 +59,18 @@ fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
 //     });
 // }
 
-fn extract_links<'a>(parent_protocol: &str, source_domain: &str, node: &'a Tree<Node>) -> Vec<Link> {
+fn extract_links<'a>(
+    parent_protocol: &str,
+    source_domain: &str,
+    node: &'a Tree<Node>,
+) -> Vec<Link> {
     let link_attribute_identifiers = vec!["href", "src", "data-src"];
-    node
-        .values()
+    node.values()
         .filter_map(|current_node| {
-            let (_, link) = current_node.as_element()?.attrs().find(|attribute| link_attribute_identifiers.contains(&attribute.0))?;
+            let (_, link) = current_node
+                .as_element()?
+                .attrs()
+                .find(|attribute| link_attribute_identifiers.contains(&attribute.0))?;
             Some(Link {
                 uri: link.to_string(),
                 scope: get_uri_scope(&source_domain, &link),
@@ -75,10 +83,7 @@ fn extract_links<'a>(parent_protocol: &str, source_domain: &str, node: &'a Tree<
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::read_to_string,
-        path::PathBuf,
-    };
+    use std::{fs::read_to_string, path::PathBuf};
 
     use super::*;
 
@@ -135,9 +140,7 @@ mod tests {
     }
 
     fn str_to_links(links: Vec<&str>) -> Vec<Link> {
-        links.iter()
-            .map(|it| Link::from_str(it))
-            .collect()
+        links.iter().map(|it| Link::from_str(it)).collect()
     }
 
     #[test]

@@ -1,28 +1,30 @@
 use chrono::{DateTime, Utc};
 use scraper::Node;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResponseTimings {
-    pub request_start_time: DateTime<Utc>,
-    pub request_complete_time: Option<DateTime<Utc>>,
+    pub overall_start_time: DateTime<Utc>,
+    pub overall_complete_time: Option<DateTime<Utc>>,
     pub parse_complete_time: Option<DateTime<Utc>>,
+    pub head_request_start_time: Option<DateTime<Utc>>,
+    pub head_request_complete_time: Option<DateTime<Utc>>,
+    pub get_request_start_time: Option<DateTime<Utc>>,
+    pub get_request_complete_time: Option<DateTime<Utc>>,
+    pub children_compete_time: Option<DateTime<Utc>>,
 }
 
 impl ResponseTimings {
     pub fn new() -> ResponseTimings {
         ResponseTimings {
-            request_start_time: Utc::now(),
-            request_complete_time: None,
+            overall_start_time: Utc::now(),
+            overall_complete_time: None,
             parse_complete_time: None,
+            head_request_start_time: None,
+            head_request_complete_time: None,
+            get_request_start_time: None,
+            get_request_complete_time: None,
+            children_compete_time: None,
         }
-    }
-
-    fn set_complete_time(&mut self, time: DateTime<Utc>) {
-        self.request_complete_time = Some(time);
-    }
-
-    fn set_parse_complete_time(&mut self, time: DateTime<Utc>) {
-        self.parse_complete_time = Some(time);
     }
 }
 
@@ -91,10 +93,8 @@ pub enum UriScope {
     UnknownPrefix,
 }
 
-
 #[derive(Debug)]
 pub struct UriResult {
-    pub parent: Option<Link>,
-    pub response_timings: ResponseTimings,
+    pub parse_complete_time: DateTime<Utc>,
     pub links: Vec<Link>,
 }
