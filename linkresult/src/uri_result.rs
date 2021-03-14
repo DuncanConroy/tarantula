@@ -39,7 +39,7 @@ pub struct Link {
 impl Link {
     pub fn from_str(s: &str) -> Link {
         Link {
-            uri: s.to_string(),
+            uri: s.trim().to_string(),
             scope: None,
             protocol: None,
             source_tag: None,

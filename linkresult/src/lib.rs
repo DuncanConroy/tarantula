@@ -1,25 +1,63 @@
-use fancy_regex::Regex;
 use fancy_regex::escape;
+use fancy_regex::Regex;
 pub use uri_result::*;
 
 pub mod uri_result;
 
 pub fn get_uri_scope(source_domain: &str, uri: &str) -> Option<UriScope> {
-    let domain_regex = escape(source_domain)
-        .replace("-","\"");
+    let domain_regex = escape(source_domain).replace("-", "\"");
 
     match uri {
         uri if (uri.eq("/")) => Some(UriScope::Root),
         uri if (uri.starts_with("mailto:")) => Some(UriScope::Mailto),
         uri if (uri.starts_with("data:image/")) => Some(UriScope::EmbeddedImage),
         uri if (uri.starts_with("javascript:")) => Some(UriScope::Code),
-        uri if (Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap().is_match(&uri).unwrap()) => Some(UriScope::UnknownPrefix),
+        uri if (Regex::new("^(?!https?)[a-zA-Z0-9]+:.*")
+            .unwrap()
+            .is_match(&uri)
+            .unwrap()) =>
+        {
+            Some(UriScope::UnknownPrefix)
+        }
         uri if (Regex::new("^/?#").unwrap().is_match(&uri).unwrap()) => Some(UriScope::Anchor),
-        uri if (Regex::new(&format!("^(?![a-zA-Z]+://)//(?![^{}])(?:/?(?:[^#].+))$", domain_regex)).unwrap().is_match(&uri).unwrap()) => Some(UriScope::External),
-        uri if (Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$").unwrap().is_match(&uri).unwrap()) => Some(UriScope::SameDomain),
-        uri if (Regex::new(&format!("^https?://{}", domain_regex).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriScope::SameDomain) }
-        uri if (Regex::new(&format!("^https?://[^/=?]*\\.{}.*$", domain_regex).to_owned()).unwrap().is_match(&uri).unwrap()) => { Some(UriScope::DifferentSubDomain) }
-        uri if (Regex::new("^https?://.*").unwrap().is_match(&uri).unwrap()) => Some(UriScope::External),
+        uri if (Regex::new(&format!("^//.+\\.(?:{}).*$", domain_regex))
+            .unwrap()
+            .is_match(&uri)
+            .unwrap()) =>
+        {
+            Some(UriScope::DifferentSubDomain)
+        }
+        uri if (Regex::new(&format!("^//(?!{}).*$", domain_regex))
+            .unwrap()
+            .is_match(&uri)
+            .unwrap()) =>
+        {
+            Some(UriScope::External)
+        }
+        uri if (Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$")
+            .unwrap()
+            .is_match(&uri)
+            .unwrap()) =>
+        {
+            Some(UriScope::SameDomain)
+        }
+        uri if (Regex::new(&format!("^https?://{}", domain_regex).to_owned())
+            .unwrap()
+            .is_match(&uri)
+            .unwrap()) =>
+        {
+            Some(UriScope::SameDomain)
+        }
+        uri if (Regex::new(&format!("^https?://[^/=?]*\\.{}.*$", domain_regex).to_owned())
+            .unwrap()
+            .is_match(&uri)
+            .unwrap()) =>
+        {
+            Some(UriScope::DifferentSubDomain)
+        }
+        uri if (Regex::new("^https?://.*").unwrap().is_match(&uri).unwrap()) => {
+            Some(UriScope::External)
+        }
         _ => None,
     }
 }
@@ -30,9 +68,23 @@ pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol>
         uri if uri.starts_with("http") => Some(UriProtocol::HTTP),
         uri if uri.starts_with("data:") => None,
         uri if uri.starts_with("mailto:") => None,
-        uri if (Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap().is_match(&uri).unwrap()) => None,
+        uri if (Regex::new("^(?!https?)[a-zA-Z0-9]+:.*")
+            .unwrap()
+            .is_match(&uri)
+            .unwrap()) =>
+        {
+            None
+        }
         uri if uri.eq("") => None,
-        _ => get_uri_protocol("", &parent_protocol)
+        _ => get_uri_protocol("", &parent_protocol),
+    }
+}
+
+pub fn get_uri_protocol_as_str(protocol: &UriProtocol) -> &str {
+    match protocol {
+        UriProtocol::HTTP => "http",
+        UriProtocol::HTTPS => "https",
+        _ => "https",
     }
 }
 
@@ -55,8 +107,10 @@ mod tests {
             ("/account/login?redirect=https://example.com/", Some(UriScope::SameDomain)),
             ("/agb/", Some(UriScope::SameDomain)),
             ("/ausgabe/example-com-62-mindful-leadership/", Some(UriScope::SameDomain)),
-            ("//same-domain-deeplink/to-somewhere", Some(UriScope::SameDomain)),
-            ("//cdn.external-domain.com/some-big-file.RAW", Some(UriScope::External)),
+            // ("//same-domain-deeplink/to-somewhere", Some(UriScope::External)), // should actually be invalid, don't care for now
+            ("//cdn.external-domain.com/example.com/some-big-file.RAW", Some(UriScope::External)),
+            ("//storage.googleapis.com/example.com/foo.png", Some(UriScope::External)),
+            ("//foo.example.com/some-file.png", Some(UriScope::DifferentSubDomain)),
             ("somefile/some.txt", Some(UriScope::SameDomain)),
             ("http://feeds.soundcloud.com/users/soundcloud:users:213461595/sounds.rss", Some(UriScope::External)),
             ("https://example-com.cloudfront.net/example-com/images/icons/example-com-apple-touch-120x120.png", Some(UriScope::External)),
@@ -90,9 +144,9 @@ mod tests {
             .map(|it| (&it.0, &it.1, get_uri_scope("example.com", it.0)))
             .for_each(|it| {
                 assert_eq!(
-                    it.1,
-                    &it.2,
-                    "{} ::> expected: {:?} got: {:?}", it.0, it.1, it.2
+                    it.1, &it.2,
+                    "{} ::> expected: {:?} got: {:?}",
+                    it.0, it.1, it.2
                 )
             })
     }
@@ -128,7 +182,10 @@ mod tests {
                 assert_eq!(
                     it.1,
                     Some(UriScope::SameDomain),
-                    "{} ::> expected: {:?} got: {:?}", it.0, Some(UriScope::External), it.1
+                    "{} ::> expected: {:?} got: {:?}",
+                    it.0,
+                    Some(UriScope::External),
+                    it.1
                 )
             })
     }
@@ -174,9 +231,9 @@ mod tests {
             .map(|it| (&it.0, &it.1, &it.2, get_uri_protocol(it.0, it.1)))
             .for_each(|it| {
                 assert_eq!(
-                    it.2,
-                    &it.3,
-                    "{}, {} ::> expected: {:?} got: {:?}", it.0, it.1, it.2, it.3
+                    it.2, &it.3,
+                    "{}, {} ::> expected: {:?} got: {:?}",
+                    it.0, it.1, it.2, it.3
                 )
             });
     }

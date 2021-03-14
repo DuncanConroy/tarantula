@@ -86,6 +86,7 @@ impl<'a> Page<'a> {
 
     pub fn get_protocol(&self) -> String {
         let uri = self.get_uri();
+        println!("get protocol: {}", uri);
         uri.scheme_str().unwrap().to_owned()
     }
 

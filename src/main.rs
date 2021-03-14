@@ -1,22 +1,26 @@
 use std::env;
 
 use lib::*;
-use linkresult::{get_uri_protocol, get_uri_scope, Link};
+use linkresult::{get_uri_protocol, get_uri_protocol_as_str, get_uri_scope, Link, UriScope};
 use page::*;
 
 mod lib;
 
 async fn main2() {
-    let uri = get_url_from_args().unwrap();
+    let uri = get_url_from_args().unwrap().trim().to_string();
+    let protocol = get_uri_protocol("", &uri);
     let mut page = Page::new(Link {
-        scope: get_uri_scope(&uri, &uri),
-        protocol: get_uri_protocol("", &uri),
+        scope: Some(UriScope::Root),
+        protocol: protocol.clone(),
         uri,
         source_tag: None,
     });
+    let protocol_unwrapped = &protocol.unwrap();
+    let protocol_str = get_uri_protocol_as_str(protocol_unwrapped);
     lib::recursive_load_page_and_get_links(&mut lib::LoadPageArguments {
-        host: page.get_uri().host().unwrap(),
-        known_links: vec![],
+        host: page.get_uri().host().unwrap().into(),
+        protocol: protocol_str.into(),
+        known_links: &mut vec![],
         page: &mut page,
         same_domain_only: true,
     })

@@ -2,7 +2,7 @@ use async_recursion::async_recursion;
 use chrono::Utc;
 use hyper::{Body, Client, Request, Uri};
 use hyper_tls::HttpsConnector;
-use linkresult::{Link, UriResult};
+use linkresult::{get_uri_scope, uri_result, Link, UriResult, UriScope};
 use page::Page;
 
 pub mod page;
@@ -107,8 +107,9 @@ pub async fn fetch_page(page: &mut Page<'_>, uri: Uri) -> DynResult<()> {
 
 pub struct LoadPageArguments<'a, 'b> {
     pub page: &'a mut Page<'a>,
+    pub protocol: &'b str,
     pub host: &'b str,
-    pub known_links: Vec<Link>,
+    pub known_links: &'b mut Vec<String>,
     pub same_domain_only: bool,
 }
 
@@ -116,26 +117,35 @@ unsafe impl<'a, 'b> Send for LoadPageArguments<'a, 'b> {}
 
 #[async_recursion]
 pub async fn recursive_load_page_and_get_links<'a>(
-    load_page_arguments: &'a mut LoadPageArguments,
+    load_page_arguments: &'a mut LoadPageArguments<'_, 'a>,
 ) -> DynResult<()> {
-    let mut all_known_links: Vec<Link> = load_page_arguments.known_links.clone();
+    let mut all_known_links = &mut *load_page_arguments.known_links;
 
+    if all_known_links.contains(&load_page_arguments.page.link.uri) {
+        println!(
+            "Skipping already known {:?}",
+            &load_page_arguments.page.link
+        );
+        return Ok(());
+    }
     let item_url_string = create_url_string(
-        &load_page_arguments.page.get_protocol(),
-        &load_page_arguments.host,
+        load_page_arguments.protocol,
+        load_page_arguments.host,
         &load_page_arguments.page.link.uri,
     );
     println!("item_url_string {}", item_url_string);
     let item_uri = item_url_string.parse::<hyper::Uri>().unwrap();
     println!("trying {}", item_uri);
     let mut links_to_visit: Vec<Link> = find_links_to_visit2(
-        &load_page_arguments.page,
-        all_known_links.clone(),
-        &mut load_page_arguments.page.clone(),
+        &load_page_arguments.host,
+        &load_page_arguments.protocol,
+        &all_known_links,
+        load_page_arguments.page,
         item_uri,
         load_page_arguments.same_domain_only,
     )
-    .await?;
+    .await
+    .unwrap();
     load_page_arguments.page.descendants = Some(
         links_to_visit
             .iter()
@@ -144,50 +154,22 @@ pub async fn recursive_load_page_and_get_links<'a>(
     );
 
     println!(
-        "found {} links to visit: {:?}",
+        ">>found {} links to visit: {:?}",
         links_to_visit.len(),
         links_to_visit
     );
+
+    all_known_links.push(load_page_arguments.page.link.uri.clone());
 
     if let Some(descendants) = load_page_arguments.page.descendants.clone() {
         for element in descendants {
             let mut current_page: Page = element;
             current_page.parent = Some(&load_page_arguments.page);
-            let item_url_string = create_url_string(
-                &load_page_arguments.page.get_protocol(),
-                &load_page_arguments.host,
-                &current_page.link.uri,
-            );
-            println!("item_url_string {}", item_url_string);
-            let item_uri = item_url_string.parse::<hyper::Uri>().unwrap();
-            println!("trying {}", item_uri);
-            let mut links_to_visit: Vec<Link> = find_links_to_visit2(
-                &load_page_arguments.page,
-                all_known_links.clone(),
-                &mut current_page,
-                item_uri,
-                load_page_arguments.same_domain_only,
-            )
-            .await
-            .unwrap();
-            current_page.descendants = Some(
-                links_to_visit
-                    .iter()
-                    .map(|it| Page::new(it.to_owned()))
-                    .collect(),
-            );
-
-            println!(
-                "found {} links to visit: {:?}",
-                links_to_visit.len(),
-                links_to_visit
-            );
-
-            all_known_links.append(&mut links_to_visit);
             recursive_load_page_and_get_links(&mut LoadPageArguments {
                 page: &mut current_page,
+                protocol: load_page_arguments.protocol,
                 host: load_page_arguments.host.clone(),
-                known_links: all_known_links.clone(),
+                known_links: &mut all_known_links,
                 same_domain_only: load_page_arguments.same_domain_only,
             })
             .await?;
@@ -198,42 +180,63 @@ pub async fn recursive_load_page_and_get_links<'a>(
         .page
         .response_timings
         .children_compete_time = Some(Utc::now());
-    // Ok(all_known_links)
     Ok(())
 }
 
 async fn find_links_to_visit2<'a>(
-    parent_page: &Page<'a>,
-    all_known_links: Vec<Link>,
+    source_domain: &str,
+    protocol: &str,
+    all_known_links: &Vec<String>,
     page_to_process: &mut Page<'a>,
     uri: Uri,
     same_domain_only: bool,
 ) -> DynResult<Vec<Link>> {
-    fetch_page(page_to_process, uri).await?;
-    let mut item_body = page_to_process.get_body().as_ref().unwrap().clone();
-    page_to_process.response_timings.overall_complete_time = Some(Utc::now());
-    if item_body.is_empty() {
-        println!("No body found, no HTML to parse -> skipping");
-        return Ok(Vec::<Link>::new());
-    }
+    if let Ok(fetch) = fetch_page(page_to_process, uri).await {
+        let mut item_body = page_to_process.get_body().as_ref().unwrap().clone();
+        page_to_process.response_timings.overall_complete_time = Some(Utc::now());
+        if item_body.is_empty() {
+            println!("No body found, no HTML to parse -> skipping");
+            return Ok(Vec::<Link>::new());
+        }
 
-    let uri_result: UriResult = dom_parser::get_links(
-        &parent_page.get_protocol(),
-        &parent_page.get_uri().host().unwrap(),
-        &mut item_body,
-        same_domain_only,
-    )
-    .unwrap();
-    page_to_process.response_timings.parse_complete_time = Some(uri_result.parse_complete_time);
+        let uri_result: UriResult =
+            dom_parser::get_links(&protocol, source_domain, &mut item_body).unwrap();
+        page_to_process.response_timings.parse_complete_time = Some(uri_result.parse_complete_time);
 
-    let links_to_visit: Vec<Link> = uri_result
-        .links
+        let result: Vec<Link> = if same_domain_only {
+            let links_this_domain = get_same_domain_links(source_domain, &uri_result.links);
+            println!("Links on this domain: {}", links_this_domain.len());
+            links_this_domain
+        } else {
+            uri_result.links
+        };
+        let links_to_visit: Vec<Link> = result
+            .iter()
+            .filter(|it| !all_known_links.contains(&it.uri))
+            .map(|it| it)
+            .cloned() // TOOD: check if can be removed
+            .collect();
+        return Ok(links_to_visit);
+    };
+
+    Ok(vec![])
+}
+
+fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
+    let mut cloned_links = links.clone();
+    cloned_links.sort_by(|a, b| a.uri.cmp(&b.uri));
+    cloned_links.dedup_by(|a, b| a.uri.eq(&b.uri));
+    cloned_links
         .iter()
-        .filter(|it| !all_known_links.contains(&it))
-        .map(|it| it)
-        .cloned() // TOOD: check if can be removed
-        .collect();
-    Ok(links_to_visit)
+        .map(|it| (it, get_uri_scope(source_domain, it.uri.as_str())))
+        .filter_map(|it| match it.1 {
+            Some(uri_result::UriScope::Root)
+            | Some(uri_result::UriScope::SameDomain)
+            | Some(uri_result::UriScope::DifferentSubDomain) => Some(it.0),
+            _ => None,
+        })
+        .cloned()
+        .collect()
 }
 
 // async fn find_links_to_visit(
@@ -280,5 +283,86 @@ fn create_url_string(protocol: &str, host: &str, link: &String) -> String {
         link.to_owned()
     } else {
         format!("{}://{}{}", protocol, host, link)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn all_links<'a>() -> Vec<&'a str> {
+        let links = vec![
+            // valid, same domain: 8 elements, unsorted
+            "https://example.com/",
+            "https://example.com/ausgabe/example-com-59-straight-outta-office/",
+            "/account/login?redirect=https://example.com/",
+            "/",
+            "/",
+            "/agb/",
+            "/agb/",
+            "/ausgabe/example-com-62-mindful-leadership/",
+            "/ausgabe/example-com-62-mindful-leadership/",
+            "https://example.com/events/",
+            "https://faq.example.com/",
+            "https://example.com/events/",
+
+            // invalid &| extern
+            "#",
+            "#s-angle-down",
+            "#s-angle-down",
+            "#s-angle-down",
+            "#s-brief",
+            "#s-business-development",
+            "#s-content-redaktion",
+            "#s-design-ux",
+            "#s-facebook",
+            "#s-flipboard",
+            "#s-instagram",
+            "#s-itunes",
+            "#s-pocket",
+            "#s-produktmanagement-projektmanagement",
+            "#s-rss",
+            "#s-soundcloud",
+            "http://www.agof.de/",
+            "http://feeds2.feedburner.com/example-com-magazin/",
+            "https://example-com.cloudfront.net/example-com/styles/main-1234567890.css",
+            "https://getpocket.com/edit.php?url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dpocket%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://twitter.com/intent/tweet?text=BIZ-Chef%3A%20Das%20Bitcoin-System%20kann%20zusammenbrechen&url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
+            "https://twitter.com/intent/tweet?text=Clubnotes.io%20%E2%80%93%20so%20machst%20du%20Notizen%20in%20deinem%20Clubhouse-Talk&url=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
+            "https://twitter.com/example-com",
+            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fbusiness-trends-gaming-zukunft-1350706%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://www.facebook.com/example-comMagazin",
+            "https://www.kununu.com/de/example-com/",
+            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Fcoinbase-kryptomarktplatz-direktplatzierung-boersenstart-1352871%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Ftwitter-plant-facebook-1352857%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+            "mailto:support@example.com",
+            "//storage.googleapis.com/example.com/assets/foo.png",
+        ];
+
+        links
+    }
+
+    fn str_to_links(links: Vec<&str>) -> Vec<Link> {
+        links.iter().map(|it| Link::from_str(it)).collect()
+    }
+
+    #[test]
+    fn get_domain_links_returns_correct_links() {
+        let sorted_expected = vec![
+            "/",
+            "/account/login?redirect=https://example.com/",
+            "/agb/",
+            "/ausgabe/example-com-62-mindful-leadership/",
+            "https://example.com/",
+            "https://example.com/ausgabe/example-com-59-straight-outta-office/",
+            "https://example.com/events/",
+            "https://faq.example.com/",
+        ];
+
+        let result = get_same_domain_links("example.com", &str_to_links(all_links()));
+
+        assert_eq!(result.len(), 8, "{:?}\n{:?}", result, sorted_expected);
+        let result_strings: Vec<&String> = result.iter().map(|it| &it.uri).collect();
+        assert_eq!(result_strings, sorted_expected);
     }
 }
