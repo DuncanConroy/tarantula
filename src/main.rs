@@ -17,15 +17,16 @@ async fn main2() {
     });
     let protocol_unwrapped = &protocol.unwrap();
     let protocol_str = get_uri_protocol_as_str(protocol_unwrapped);
-    lib::recursive_load_page_and_get_links(&mut lib::LoadPageArguments {
+    let page = lib::recursive_load_page_and_get_links(lib::LoadPageArguments {
         host: page.get_uri().host().unwrap().into(),
         protocol: protocol_str.into(),
-        known_links: &mut vec![],
-        page: &mut page,
+        known_links: vec![],
+        page,
         same_domain_only: true,
     })
     .await;
-    // println!("{:?}", page)
+    println!("Finished.");
+    println!("Tarantula result:\n{:?}", page.unwrap())
 }
 
 #[tokio::main]

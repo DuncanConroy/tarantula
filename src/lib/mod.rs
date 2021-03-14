@@ -59,7 +59,7 @@ pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send 
 //     Ok(body)
 // }
 
-pub async fn fetch_page(page: &mut Page<'_>, uri: Uri) -> DynResult<()> {
+pub async fn fetch_page(mut page: &mut Page, uri: Uri) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     println!("URI: {}", page.link.uri);
 
@@ -105,32 +105,32 @@ pub async fn fetch_page(page: &mut Page<'_>, uri: Uri) -> DynResult<()> {
     Err(format!("No content-type header found! {:?}", head).into())
 }
 
-pub struct LoadPageArguments<'a, 'b> {
-    pub page: &'a mut Page<'a>,
-    pub protocol: &'b str,
-    pub host: &'b str,
-    pub known_links: &'b mut Vec<String>,
+pub struct LoadPageArguments {
+    pub page: Page,
+    pub protocol: String,
+    pub host: String,
+    pub known_links: Vec<String>,
     pub same_domain_only: bool,
 }
 
-unsafe impl<'a, 'b> Send for LoadPageArguments<'a, 'b> {}
+unsafe impl<'a, 'b> Send for LoadPageArguments {}
 
 #[async_recursion]
-pub async fn recursive_load_page_and_get_links<'a>(
-    load_page_arguments: &'a mut LoadPageArguments<'_, 'a>,
-) -> DynResult<()> {
-    let mut all_known_links = &mut *load_page_arguments.known_links;
+pub async fn recursive_load_page_and_get_links(
+    mut load_page_arguments: LoadPageArguments,
+) -> DynResult<Page> {
+    let mut all_known_links = load_page_arguments.known_links;
 
     if all_known_links.contains(&load_page_arguments.page.link.uri) {
         println!(
             "Skipping already known {:?}",
             &load_page_arguments.page.link
         );
-        return Ok(());
+        return Ok(load_page_arguments.page);
     }
     let item_url_string = create_url_string(
-        load_page_arguments.protocol,
-        load_page_arguments.host,
+        &load_page_arguments.protocol,
+        &load_page_arguments.host,
         &load_page_arguments.page.link.uri,
     );
     println!("item_url_string {}", item_url_string);
@@ -140,18 +140,14 @@ pub async fn recursive_load_page_and_get_links<'a>(
         &load_page_arguments.host,
         &load_page_arguments.protocol,
         &all_known_links,
-        load_page_arguments.page,
+        &mut load_page_arguments.page,
         item_uri,
         load_page_arguments.same_domain_only,
     )
     .await
     .unwrap();
-    load_page_arguments.page.descendants = Some(
-        links_to_visit
-            .iter()
-            .map(|it| Page::new(it.to_owned()))
-            .collect(),
-    );
+
+    // links_to_visit.iter().map(|it| it.to_owned()).collect();
 
     println!(
         ">>found {} links to visit: {:?}",
@@ -161,33 +157,37 @@ pub async fn recursive_load_page_and_get_links<'a>(
 
     all_known_links.push(load_page_arguments.page.link.uri.clone());
 
-    if let Some(descendants) = load_page_arguments.page.descendants.clone() {
-        for element in descendants {
-            let mut current_page: Page = element;
-            current_page.parent = Some(&load_page_arguments.page);
-            recursive_load_page_and_get_links(&mut LoadPageArguments {
-                page: &mut current_page,
-                protocol: load_page_arguments.protocol,
+    if links_to_visit.len() > 0 && load_page_arguments.page.descendants.is_none() {
+        load_page_arguments.page.descendants = Some(vec![]);
+    }
+    if let Some(mut descendants) = load_page_arguments.page.descendants {
+        for element in links_to_visit {
+            let current_page = recursive_load_page_and_get_links(LoadPageArguments {
+                page: Page::new(element),
+                protocol: load_page_arguments.protocol.clone().into(),
                 host: load_page_arguments.host.clone(),
-                known_links: &mut all_known_links,
+                known_links: all_known_links.clone(),
                 same_domain_only: load_page_arguments.same_domain_only,
             })
-            .await?;
+            .await
+            .unwrap();
+            descendants.push(current_page);
         }
+        load_page_arguments.page.descendants = Some(descendants);
     }
 
     load_page_arguments
         .page
         .response_timings
         .children_compete_time = Some(Utc::now());
-    Ok(())
+    Ok(load_page_arguments.page)
 }
 
-async fn find_links_to_visit2<'a>(
+async fn find_links_to_visit2(
     source_domain: &str,
     protocol: &str,
     all_known_links: &Vec<String>,
-    page_to_process: &mut Page<'a>,
+    mut page_to_process: &mut Page,
     uri: Uri,
     same_domain_only: bool,
 ) -> DynResult<Vec<Link>> {

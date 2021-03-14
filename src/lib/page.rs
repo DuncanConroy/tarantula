@@ -9,22 +9,22 @@ pub struct PageResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct Page<'a> {
+pub struct Page {
     pub link: Link,
     pub response_timings: ResponseTimings,
-    pub descendants: Option<Vec<Page<'a>>>,
-    pub parent: Option<&'a Page<'a>>,
+    pub descendants: Option<Vec<Page>>,
+    // pub parent: Option<&'a Page>,
     pub page_response: Option<PageResponse>,
     body: Option<String>,
 }
 
-impl<'a> Page<'a> {
-    pub fn new(link: Link) -> Page<'a> {
+impl Page {
+    pub fn new(link: Link) -> Page {
         Page {
             link,
             page_response: None,
             response_timings: ResponseTimings::new(),
-            parent: None,
+            // parent: None,
             descendants: None,
             body: None,
         }
