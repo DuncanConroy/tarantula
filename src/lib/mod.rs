@@ -118,7 +118,7 @@ unsafe impl<'a, 'b> Send for LoadPageArguments {}
 #[async_recursion]
 pub async fn recursive_load_page_and_get_links(
     mut load_page_arguments: LoadPageArguments,
-) -> DynResult<Page> {
+) -> DynResult<(Page, Vec<String>)> {
     let mut all_known_links = load_page_arguments.known_links;
 
     if all_known_links.contains(&load_page_arguments.page.link.uri) {
@@ -126,7 +126,7 @@ pub async fn recursive_load_page_and_get_links(
             "Skipping already known {:?}",
             &load_page_arguments.page.link
         );
-        return Ok(load_page_arguments.page);
+        return Ok((load_page_arguments.page, all_known_links));
     }
     let item_url_string = create_url_string(
         &load_page_arguments.protocol,
@@ -147,8 +147,6 @@ pub async fn recursive_load_page_and_get_links(
     .await
     .unwrap();
 
-    // links_to_visit.iter().map(|it| it.to_owned()).collect();
-
     println!(
         ">>found {} links to visit: {:?}",
         links_to_visit.len(),
@@ -162,16 +160,18 @@ pub async fn recursive_load_page_and_get_links(
     }
     if let Some(mut descendants) = load_page_arguments.page.descendants {
         for element in links_to_visit {
-            let current_page = recursive_load_page_and_get_links(LoadPageArguments {
-                page: Page::new(element),
-                protocol: load_page_arguments.protocol.clone().into(),
-                host: load_page_arguments.host.clone(),
-                known_links: all_known_links.clone(),
-                same_domain_only: load_page_arguments.same_domain_only,
-            })
-            .await
-            .unwrap();
+            let (current_page, additional_known_links) =
+                recursive_load_page_and_get_links(LoadPageArguments {
+                    page: Page::new(element),
+                    protocol: load_page_arguments.protocol.clone().into(),
+                    host: load_page_arguments.host.clone(),
+                    known_links: all_known_links.clone(),
+                    same_domain_only: load_page_arguments.same_domain_only,
+                })
+                .await
+                .unwrap();
             descendants.push(current_page);
+            all_known_links = additional_known_links;
         }
         load_page_arguments.page.descendants = Some(descendants);
     }
@@ -180,7 +180,7 @@ pub async fn recursive_load_page_and_get_links(
         .page
         .response_timings
         .children_compete_time = Some(Utc::now());
-    Ok(load_page_arguments.page)
+    Ok((load_page_arguments.page, all_known_links))
 }
 
 async fn find_links_to_visit2(
