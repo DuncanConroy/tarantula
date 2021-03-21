@@ -2,62 +2,32 @@ use async_recursion::async_recursion;
 use chrono::Utc;
 use hyper::{Body, Client, Request, Uri};
 use hyper_tls::HttpsConnector;
-use linkresult::{get_uri_scope, uri_result, Link, UriResult, UriScope};
+
+use linkresult::{get_uri_scope, Link, uri_result, UriResult, UriScope};
 use page::Page;
+use std::fmt::Error;
 
 pub mod page;
 
 // A simple type alias so as to DRY.
 pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-// pub async fn fetch_url(
-//     url: &hyper::Uri,
-//     &mut response_timings: ResponseTimings,
-// ) -> DynResult<String> {
-//     println!("URI: {}", url);
-//
-//     let https = HttpsConnector::new();
-//     let client = Client::builder().build::<_, hyper::Body>(https);
-//
-//     let req = Request::builder()
-//         .method("HEAD")
-//         .uri(url)
-//         .body(Body::from(""))
-//         .expect("HEAD request builder");
-//
-//     let head = client.request(req).await?;
-//     if !head.status().is_success() {
-//         return Ok(String::from(""));
-//         // todo: should be in metadata/response
-//     }
-//     let content_type = head.headers().get("content-type");
-//     if content_type.is_none() {
-//         return Err(format!("No content-type header found! {:?}", head).into());
-//     }
-//     if !content_type
-//         .unwrap()
-//         .to_str()
-//         .unwrap()
-//         .to_string()
-//         .contains("text/html")
-//     {
-//         return Ok(String::from(""));
-//     }
-//
-//     let response = client.get(url.clone()).await?;
-//
-//     // println!("Status: {}", response.status());
-//     // println!("Headers: {:#?}\n", response.headers());
-//
-//     let body: String =
-//         String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await?.as_ref())
-//             .to_string();
-//     // println!("BODY: {}", body);
-//
-//     // println!("\nDone!");
-//
-//     Ok(body)
-// }
+#[derive(Clone)]
+pub struct RunConfig {
+    pub url: String,
+    pub follow_redirects: bool,
+    pub maximum_depth: u8,
+}
+
+impl RunConfig {
+    pub fn new(url: String) -> RunConfig {
+        RunConfig {
+            url,
+            follow_redirects: false,
+            maximum_depth: 16,
+        }
+    }
+}
 
 pub async fn fetch_page(mut page: &mut Page, uri: Uri) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
@@ -82,7 +52,7 @@ pub async fn fetch_page(mut page: &mut Page, uri: Uri) -> DynResult<()> {
             page.get_status_code().unwrap(),
             page.page_response.as_ref().unwrap().headers
         )
-        .into());
+            .into());
     }
 
     page.response_timings.get_request_start_time = Some(Utc::now());
@@ -111,32 +81,39 @@ pub struct LoadPageArguments {
     pub host: String,
     pub known_links: Vec<String>,
     pub same_domain_only: bool,
+    pub depth: u8,
 }
 
 unsafe impl<'a, 'b> Send for LoadPageArguments {}
 
 #[async_recursion]
 pub async fn recursive_load_page_and_get_links(
+    run_config: RunConfig,
     mut load_page_arguments: LoadPageArguments,
 ) -> DynResult<(Page, Vec<String>)> {
-    let mut all_known_links = load_page_arguments.known_links;
-
-    if all_known_links.contains(&load_page_arguments.page.link.uri) {
-        println!(
-            "Skipping already known {:?}",
-            &load_page_arguments.page.link
-        );
-        return Ok((load_page_arguments.page, all_known_links));
+    if load_page_arguments.depth > run_config.maximum_depth.clone() {
+        println!("Maximum depth exceeded!");
+        return Ok((load_page_arguments.page, load_page_arguments.known_links));
     }
-    let item_url_string = create_url_string(
+
+    let mut all_known_links = load_page_arguments.known_links;
+    println!("all_known_links: {:#?}", all_known_links);
+
+    // if all_known_links.contains(&load_page_arguments.page.link.uri) {
+    //     println!(
+    //         "Skipping already known {:?}",
+    //         &load_page_arguments.page.link
+    //     );
+    //     return Ok((load_page_arguments.page, all_known_links));
+    // }
+    all_known_links.push(load_page_arguments.page.link.uri.clone());
+    let item_uri = create_uri(
         &load_page_arguments.protocol,
         &load_page_arguments.host,
         &load_page_arguments.page.link.uri,
     );
-    println!("item_url_string {}", item_url_string);
-    let item_uri = item_url_string.parse::<hyper::Uri>().unwrap();
     println!("trying {}", item_uri);
-    let mut links_to_visit: Vec<Link> = find_links_to_visit2(
+    let mut links_to_visit: Vec<Link> = find_links_to_visit(
         &load_page_arguments.host,
         &load_page_arguments.protocol,
         &all_known_links,
@@ -144,8 +121,8 @@ pub async fn recursive_load_page_and_get_links(
         item_uri,
         load_page_arguments.same_domain_only,
     )
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     println!(
         ">>found {} links to visit: {:?}",
@@ -153,25 +130,26 @@ pub async fn recursive_load_page_and_get_links(
         links_to_visit
     );
 
-    all_known_links.push(load_page_arguments.page.link.uri.clone());
+    all_known_links.append(&mut links_to_visit.iter_mut().map(|it| it.uri.clone()).collect());
 
     if links_to_visit.len() > 0 && load_page_arguments.page.descendants.is_none() {
         load_page_arguments.page.descendants = Some(vec![]);
     }
     if let Some(mut descendants) = load_page_arguments.page.descendants {
         for element in links_to_visit {
-            let (current_page, additional_known_links) =
-                recursive_load_page_and_get_links(LoadPageArguments {
-                    page: Page::new(element),
-                    protocol: load_page_arguments.protocol.clone().into(),
-                    host: load_page_arguments.host.clone(),
-                    known_links: all_known_links.clone(),
-                    same_domain_only: load_page_arguments.same_domain_only,
-                })
-                .await
-                .unwrap();
-            descendants.push(current_page);
-            all_known_links = additional_known_links;
+            let recursion_result = recursive_load_page_and_get_links(run_config.clone(), LoadPageArguments {
+                page: Page::new(element),
+                protocol: load_page_arguments.protocol.clone().into(),
+                host: load_page_arguments.host.clone(),
+                known_links: all_known_links.clone(),
+                same_domain_only: load_page_arguments.same_domain_only,
+                depth: load_page_arguments.depth + 1,
+            }).await;
+
+            if let Ok((current_page, additional_known_links)) = recursion_result {
+                descendants.push(current_page);
+                all_known_links = additional_known_links;
+            }
         }
         load_page_arguments.page.descendants = Some(descendants);
     }
@@ -183,7 +161,7 @@ pub async fn recursive_load_page_and_get_links(
     Ok((load_page_arguments.page, all_known_links))
 }
 
-async fn find_links_to_visit2(
+async fn find_links_to_visit(
     source_domain: &str,
     protocol: &str,
     all_known_links: &Vec<String>,
@@ -214,7 +192,7 @@ async fn find_links_to_visit2(
             .iter()
             .filter(|it| !all_known_links.contains(&it.uri))
             .map(|it| it)
-            .cloned() // TOOD: check if can be removed
+            .cloned()
             .collect();
         return Ok(links_to_visit);
     };
@@ -239,56 +217,20 @@ fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
         .collect()
 }
 
-// async fn find_links_to_visit(
-//     parent_protocol: &str,
-//     parent_uri: Option<Link>,
-//     all_known_links: Vec<Link>,
-//     item_url: Uri,
-// ) -> DynResult<Vec<Link>> {
-//     let request_start_time = Utc::now();
-//     let mut item_body = fetch_url(&item_url).await?;
-//     let response_timings = ResponseTimings {
-//         overall_start_time: request_start_time,
-//         parse_complete_time: None,
-//         overall_complete_time: Some(Utc::now()),
-//     };
-//     if item_body.is_empty() {
-//         println!("No body found, now HTML to parse -> skipping");
-//         return Ok(Vec::<Link>::new());
-//     }
-//
-//     let uri_result: UriResult = dom_parser::get_links(
-//         &parent_protocol,
-//         parent_uri,
-//         &item_url.host().unwrap(),
-//         &mut item_body,
-//         true,
-//         response_timings,
-//     )
-//     .unwrap();
-//
-//     let links_to_visit: Vec<Link> = uri_result
-//         .links
-//         .iter()
-//         .filter(|it| !all_known_links.contains(&it))
-//         .map(|it| it)
-//         .cloned()
-//         .collect();
-//     Ok(links_to_visit)
-// }
-
-fn create_url_string(protocol: &str, host: &str, link: &String) -> String {
-    println!("#-> {},{},{}", protocol, host, link);
-    if link.starts_with("http") {
+fn create_uri(protocol: &str, host: &str, link: &String) -> Uri {
+    let url_string = if link.starts_with("http") {
         link.to_owned()
     } else {
         format!("{}://{}{}", protocol, host, link)
-    }
+    };
+
+    url_string.parse::<hyper::Uri>().unwrap()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn all_links<'a>() -> Vec<&'a str> {
         let links = vec![
             // valid, same domain: 8 elements, unsorted
