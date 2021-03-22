@@ -1,11 +1,14 @@
+use std::fmt::Error;
+
 use async_recursion::async_recursion;
 use chrono::Utc;
-use hyper::{Body, Client, Request, Uri};
+use hyper::{Body, Client, Request, Uri, Response};
 use hyper_tls::HttpsConnector;
 
 use linkresult::{get_uri_scope, Link, uri_result, UriResult, UriScope};
 use page::Page;
-use std::fmt::Error;
+use std::str::FromStr;
+use std::pin::Pin;
 
 pub mod page;
 
@@ -16,6 +19,7 @@ pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send 
 pub struct RunConfig {
     pub url: String,
     pub follow_redirects: bool,
+    pub maximum_redirects: u8,
     pub maximum_depth: u8,
 }
 
@@ -24,26 +28,51 @@ impl RunConfig {
         RunConfig {
             url,
             follow_redirects: false,
+            maximum_redirects: 10,
             maximum_depth: 16,
         }
     }
 }
 
-pub async fn fetch_page(mut page: &mut Page, uri: Uri) -> DynResult<()> {
+#[async_recursion]
+async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maximum_redirects: u8) -> DynResult<(Uri, Response<Body>)> {
+    let https = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(https);
+
+    let req = Request::builder()
+        .method("HEAD")
+        .uri(uri.clone())
+        .body(Body::from(""))
+        .expect("HEAD request builder");
+
+    match follow_redirects {
+        true => {
+            let response = client.request(req).await.unwrap();
+            if current_redirect < maximum_redirects && response.status().is_redirection() {
+                if let Some(location_header) = response.headers().get("location") {
+                   let uri = Uri::from_str(location_header.to_str().unwrap()).unwrap();
+                    println!("Following redirect {}", uri);
+                    let response = fetch_head(uri, follow_redirects, current_redirect + 1, maximum_redirects).await;
+                    return response;
+                }
+                println!("No valid location found in redirect header {:?}", response);
+            }
+            Ok((uri, response))
+        },
+        false => Ok((uri, client.request(req).await.unwrap()))
+    }
+}
+
+pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, maximum_redirects:u8) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     println!("URI: {}", page.link.uri);
 
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
 
-    let req = Request::builder()
-        .method("HEAD")
-        .uri(&uri)
-        .body(Body::from(""))
-        .expect("HEAD request builder");
-
     page.response_timings.head_request_start_time = Some(Utc::now());
-    let head = client.request(req).await?;
+    let (uri, head) = fetch_head(uri, follow_redirects, 1, maximum_redirects).await.unwrap();
+    println!("HEAD for {}:{:?}", uri, &head);
     page.response_timings.head_request_complete_time = Some(Utc::now());
     if !head.status().is_success() {
         page.set_response(head).await;
@@ -56,7 +85,8 @@ pub async fn fetch_page(mut page: &mut Page, uri: Uri) -> DynResult<()> {
     }
 
     page.response_timings.get_request_start_time = Some(Utc::now());
-    page.set_response(client.get(uri).await?).await;
+    let mut response = client.get(uri.to_owned()).await?;
+    page.set_response(response).await;
     page.response_timings.get_request_complete_time = Some(Utc::now());
 
     if let Some(content_type) = page.get_content_type() {
@@ -120,6 +150,8 @@ pub async fn recursive_load_page_and_get_links(
         &mut load_page_arguments.page,
         item_uri,
         load_page_arguments.same_domain_only,
+        run_config.follow_redirects,
+        run_config.maximum_redirects,
     )
         .await
         .unwrap();
@@ -168,8 +200,10 @@ async fn find_links_to_visit(
     mut page_to_process: &mut Page,
     uri: Uri,
     same_domain_only: bool,
+    follow_redirects: bool,
+    maximum_redirects: u8
 ) -> DynResult<Vec<Link>> {
-    if let Ok(fetch) = fetch_page(page_to_process, uri).await {
+    if let Ok(fetch) = fetch_page(page_to_process, uri, follow_redirects, maximum_redirects).await {
         let mut item_body = page_to_process.get_body().as_ref().unwrap().clone();
         page_to_process.response_timings.overall_complete_time = Some(Utc::now());
         if item_body.is_empty() {
