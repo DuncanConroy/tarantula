@@ -3,12 +3,19 @@ use fancy_regex::Regex;
 pub use uri_result::*;
 
 pub mod uri_result;
+pub mod uri_service;
 
 pub fn get_uri_scope(source_domain: &str, uri: &str) -> Option<UriScope> {
     let domain_regex = escape(source_domain).replace("-", "\"");
 
     match uri {
         uri if (uri.eq("/")) => Some(UriScope::Root),
+        uri if(uri.eq(source_domain)) => Some(UriScope::Root),
+        uri if(uri.eq(&format!("{}/", source_domain))) => Some(UriScope::Root),
+        uri if(uri.eq(&format!("http://{}", source_domain))) => Some(UriScope::Root),
+        uri if(uri.eq(&format!("http://{}/", source_domain))) => Some(UriScope::Root),
+        uri if(uri.eq(&format!("https://{}", source_domain))) => Some(UriScope::Root),
+        uri if(uri.eq(&format!("https://{}/", source_domain))) => Some(UriScope::Root),
         uri if (uri.starts_with("mailto:")) => Some(UriScope::Mailto),
         uri if (uri.starts_with("data:image/")) => Some(UriScope::EmbeddedImage),
         uri if (uri.starts_with("javascript:")) => Some(UriScope::Code),
@@ -76,6 +83,7 @@ pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol>
             None
         }
         uri if uri.eq("") => None,
+        uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
         _ => get_uri_protocol("", &parent_protocol),
     }
 }
@@ -100,6 +108,12 @@ mod tests {
         let random_custom_prefix = format!("customPref{}ix:foobar();", random_char);
         let input_to_output = vec![
             ("/", Some(UriScope::Root)),
+            ("example.com", Some(UriScope::Root)),
+            ("example.com/", Some(UriScope::Root)),
+            ("http://example.com", Some(UriScope::Root)),
+            ("http://example.com/", Some(UriScope::Root)),
+            ("https://example.com", Some(UriScope::Root)),
+            ("https://example.com/", Some(UriScope::Root)),
             ("#", Some(UriScope::Anchor)),
             ("#s-angle-down", Some(UriScope::Anchor)),
             ("/#s-angle-down", Some(UriScope::Anchor)),
@@ -209,10 +223,10 @@ mod tests {
             ("https", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP6AgAA+gD3odZZSQAAAABJRU5ErkJggg==", None),
             ("http", "/account/login?redirect=https://example.com/", Some(UriProtocol::HTTP)),
             ("https", "/account/login?redirect=https://example.com/", Some(UriProtocol::HTTPS)),
-            ("http", "//same-domain-deeplink/to-somewhere", Some(UriProtocol::HTTP)),
-            ("https", "//same-domain-deeplink/to-somewhere", Some(UriProtocol::HTTPS)),
-            ("http", "//cdn.external-domain.com/some-big-file.RAW", Some(UriProtocol::HTTP)),
-            ("https", "//cdn.external-domain.com/some-big-file.RAW", Some(UriProtocol::HTTPS)),
+            ("http", "//same-domain-deeplink/to-somewhere", Some(UriProtocol::IMPLICIT)),
+            ("https", "//same-domain-deeplink/to-somewhere", Some(UriProtocol::IMPLICIT)),
+            ("http", "//cdn.external-domain.com/some-big-file.RAW", Some(UriProtocol::IMPLICIT)),
+            ("https", "//cdn.external-domain.com/some-big-file.RAW", Some(UriProtocol::IMPLICIT)),
             ("http", "somefile/some.txt", Some(UriProtocol::HTTP)),
             ("https", "somefile/some.txt", Some(UriProtocol::HTTPS)),
             ("https", "http://feeds.soundcloud.com/users/soundcloud:users:213461595/sounds.rss", Some(UriProtocol::HTTP)),
@@ -224,6 +238,8 @@ mod tests {
             ("https", random_custom_prefix.as_str(), None),
             ("http", "", None),
             ("https", "", None),
+            ("https", "//example.com", Some(UriProtocol::IMPLICIT)),
+            ("http", "//example.com", Some(UriProtocol::IMPLICIT)),
         ];
 
         input_to_output

@@ -1,14 +1,14 @@
 use std::fmt::Error;
+use std::pin::Pin;
+use std::str::FromStr;
 
 use async_recursion::async_recursion;
 use chrono::Utc;
-use hyper::{Body, Client, Request, Uri, Response};
+use hyper::{Body, Client, Request, Response, Uri};
 use hyper_tls::HttpsConnector;
 
-use linkresult::{get_uri_scope, Link, uri_result, UriResult, UriScope};
+use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, UriScope};
 use page::Page;
-use std::str::FromStr;
-use std::pin::Pin;
 
 pub mod page;
 
@@ -48,31 +48,35 @@ async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maxi
     match follow_redirects {
         true => {
             let response = client.request(req).await.unwrap();
+            println!("HEAD for {}: {:?}",uri.clone(),response.headers().clone());
             if current_redirect < maximum_redirects && response.status().is_redirection() {
                 if let Some(location_header) = response.headers().get("location") {
-                   let uri = Uri::from_str(location_header.to_str().unwrap()).unwrap();
-                    println!("Following redirect {}", uri);
-                    let response = fetch_head(uri, follow_redirects, current_redirect + 1, maximum_redirects).await;
+                    // let uri = Uri::from_str(location_header.to_str().unwrap()).unwrap();
+                    let adjusted_uri_str = uri_service::form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap());
+                    let adjusted_uri = adjusted_uri_str.parse::<hyper::Uri>().unwrap();
+                    println!("Following redirect {}", adjusted_uri);
+                    let response = fetch_head(adjusted_uri, follow_redirects, current_redirect + 1, maximum_redirects).await;
                     return response;
                 }
                 println!("No valid location found in redirect header {:?}", response);
             }
             Ok((uri, response))
-        },
+        }
         false => Ok((uri, client.request(req).await.unwrap()))
     }
 }
 
-pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, maximum_redirects:u8) -> DynResult<()> {
+pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, maximum_redirects: u8, host: String, protocol: String) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     println!("URI: {}", page.link.uri);
+    let adjusted_uri = uri_service::form_full_url(&protocol, uri.path(), &host).parse::<hyper::Uri>().unwrap();
+    println!("Adjusted URI: {}", adjusted_uri);
 
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
 
     page.response_timings.head_request_start_time = Some(Utc::now());
-    let (uri, head) = fetch_head(uri, follow_redirects, 1, maximum_redirects).await.unwrap();
-    println!("HEAD for {}:{:?}", uri, &head);
+    let (uri, head) = fetch_head(adjusted_uri, follow_redirects, 1, maximum_redirects).await.unwrap();
     page.response_timings.head_request_complete_time = Some(Utc::now());
     if !head.status().is_success() {
         page.set_response(head).await;
@@ -122,7 +126,7 @@ pub async fn recursive_load_page_and_get_links(
     mut load_page_arguments: LoadPageArguments,
 ) -> DynResult<(Page, Vec<String>)> {
     if load_page_arguments.depth > run_config.maximum_depth.clone() {
-        println!("Maximum depth exceeded!");
+        println!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
         return Ok((load_page_arguments.page, load_page_arguments.known_links));
     }
 
@@ -137,7 +141,7 @@ pub async fn recursive_load_page_and_get_links(
     //     return Ok((load_page_arguments.page, all_known_links));
     // }
     all_known_links.push(load_page_arguments.page.link.uri.clone());
-    let item_uri = create_uri(
+    let item_uri = uri_service::create_uri(
         &load_page_arguments.protocol,
         &load_page_arguments.host,
         &load_page_arguments.page.link.uri,
@@ -152,6 +156,7 @@ pub async fn recursive_load_page_and_get_links(
         load_page_arguments.same_domain_only,
         run_config.follow_redirects,
         run_config.maximum_redirects,
+        &load_page_arguments.host,
     )
         .await
         .unwrap();
@@ -201,9 +206,10 @@ async fn find_links_to_visit(
     uri: Uri,
     same_domain_only: bool,
     follow_redirects: bool,
-    maximum_redirects: u8
+    maximum_redirects: u8,
+    host: &str,
 ) -> DynResult<Vec<Link>> {
-    if let Ok(fetch) = fetch_page(page_to_process, uri, follow_redirects, maximum_redirects).await {
+    if let Ok(fetch) = fetch_page(page_to_process, uri, follow_redirects, maximum_redirects, String::from(host), String::from(protocol)).await {
         let mut item_body = page_to_process.get_body().as_ref().unwrap().clone();
         page_to_process.response_timings.overall_complete_time = Some(Utc::now());
         if item_body.is_empty() {
@@ -251,72 +257,11 @@ fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
         .collect()
 }
 
-fn create_uri(protocol: &str, host: &str, link: &String) -> Uri {
-    let url_string = if link.starts_with("http") {
-        link.to_owned()
-    } else {
-        format!("{}://{}{}", protocol, host, link)
-    };
-
-    url_string.parse::<hyper::Uri>().unwrap()
-}
-
 #[cfg(test)]
 mod tests {
+    use testutils::*;
+
     use super::*;
-
-    fn all_links<'a>() -> Vec<&'a str> {
-        let links = vec![
-            // valid, same domain: 8 elements, unsorted
-            "https://example.com/",
-            "https://example.com/ausgabe/example-com-59-straight-outta-office/",
-            "/account/login?redirect=https://example.com/",
-            "/",
-            "/",
-            "/agb/",
-            "/agb/",
-            "/ausgabe/example-com-62-mindful-leadership/",
-            "/ausgabe/example-com-62-mindful-leadership/",
-            "https://example.com/events/",
-            "https://faq.example.com/",
-            "https://example.com/events/",
-
-            // invalid &| extern
-            "#",
-            "#s-angle-down",
-            "#s-angle-down",
-            "#s-angle-down",
-            "#s-brief",
-            "#s-business-development",
-            "#s-content-redaktion",
-            "#s-design-ux",
-            "#s-facebook",
-            "#s-flipboard",
-            "#s-instagram",
-            "#s-itunes",
-            "#s-pocket",
-            "#s-produktmanagement-projektmanagement",
-            "#s-rss",
-            "#s-soundcloud",
-            "http://www.agof.de/",
-            "http://feeds2.feedburner.com/example-com-magazin/",
-            "https://example-com.cloudfront.net/example-com/styles/main-1234567890.css",
-            "https://getpocket.com/edit.php?url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dpocket%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://twitter.com/intent/tweet?text=BIZ-Chef%3A%20Das%20Bitcoin-System%20kann%20zusammenbrechen&url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
-            "https://twitter.com/intent/tweet?text=Clubnotes.io%20%E2%80%93%20so%20machst%20du%20Notizen%20in%20deinem%20Clubhouse-Talk&url=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
-            "https://twitter.com/example-com",
-            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fbusiness-trends-gaming-zukunft-1350706%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://www.facebook.com/example-comMagazin",
-            "https://www.kununu.com/de/example-com/",
-            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Fcoinbase-kryptomarktplatz-direktplatzierung-boersenstart-1352871%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Ftwitter-plant-facebook-1352857%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
-            "mailto:support@example.com",
-            "//storage.googleapis.com/example.com/assets/foo.png",
-        ];
-
-        links
-    }
 
     fn str_to_links(links: Vec<&str>) -> Vec<Link> {
         links.iter().map(|it| Link::from_str(it)).collect()

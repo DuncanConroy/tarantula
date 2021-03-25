@@ -11,8 +11,11 @@ mod lib;
 #[tokio::main]
 async fn main() -> DynResult<()> {
     pretty_env_logger::init();
-    // todo: implement redirect following
+    // todo: clean up options to go before the url
     // todo: don't load non-html files, e.g. PNG
+    // todo: see docs folder for refactoring
+    // todo: respect robots.txt file
+    // todo: add option to keep or dispose of html source
     // TODO: multi-threaded
     process().await;
     Ok(())

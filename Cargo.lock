@@ -932,6 +932,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "fancy-regex",
+ "hyper 0.14.4",
  "rand 0.8.3",
  "scraper",
 ]
@@ -2042,6 +2043,7 @@ dependencies = [
  "linkresult",
  "pretty_env_logger",
  "robotparser",
+ "testutils",
  "tokio 1.0.2",
 ]
 
@@ -2078,6 +2080,10 @@ checksum = "2dfed899f0eb03f32ee8c6a0aabdb8a7949659e3466561fc0adf54e26d88c5f4"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "testutils"
+version = "0.1.0"
 
 [[package]]
 name = "thin-slice"
