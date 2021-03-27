@@ -4,15 +4,17 @@ author: Daniel Bunte <daniel.bunte.84@gmail.com>
 about: Crawls Websites
 args:
   - follow_redirects:
-      short: fd
+      short: f
       long: follow_redirects
       help: Follow redirects?
   - maximum_depth:
-      short: md
       long: maximum_depth
       help: Maximum depth of traversing nested links; default=16
       takes_value: true
-      value_name: maximum_depth
+  - maximum_redirects:
+      long: maximum_redirects
+      help: Maximum redirects we will follow (to prevent endless redirects)of traversing nested links; default=10
+      takes_value: true
   - URL:
       help: Sets the url to crawl, e.g. https://www.example.com
       required: true

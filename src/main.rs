@@ -36,17 +36,10 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
     if let Some(maximum_depth) = matches.value_of("maximum_depth") {
         run_config.maximum_depth = u8::from_str(&maximum_depth).unwrap()
     }
+    if let Some(maximum_redirects) = matches.value_of("maximum_redirects") {
+        run_config.maximum_redirects = u8::from_str(&maximum_redirects).unwrap()
+    }
 
-    // let url = match env::args().nth(1) {
-    //     Some(url) => Ok(url),
-    //     _ => Err("Usage: tarantula <url> [<follow_redirects (true|false, default=false)>] [<maximum_depth (default=16)>]"),
-    // };
-    // if let Some(follow_redirects) = env::args().nth(2) {
-    //     run_config.follow_redirects = follow_redirects.to_lowercase().eq("true")
-    // }
-    // if let Some(maximum_depth) = env::args().nth(3) {
-    //     run_config.maximum_depth = u8::from_str(&maximum_depth).unwrap()
-    // }
     Ok(run_config)
 }
 
