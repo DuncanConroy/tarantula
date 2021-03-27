@@ -1,0 +1,52 @@
+pub fn all_links<'a>() -> Vec<&'a str> {
+    let links = vec![
+        // valid, same domain: 8 elements, unsorted
+        "https://example.com/",
+        "https://example.com/ausgabe/example-com-59-straight-outta-office/",
+        "/account/login?redirect=https://example.com/",
+        "/",
+        "/",
+        "/agb/",
+        "/agb/",
+        "/ausgabe/example-com-62-mindful-leadership/",
+        "/ausgabe/example-com-62-mindful-leadership/",
+        "https://example.com/events/",
+        "https://faq.example.com/",
+        "https://example.com/events/",
+
+        // invalid &| extern
+        "#",
+        "#s-angle-down",
+        "#s-angle-down",
+        "#s-angle-down",
+        "#s-brief",
+        "#s-business-development",
+        "#s-content-redaktion",
+        "#s-design-ux",
+        "#s-facebook",
+        "#s-flipboard",
+        "#s-instagram",
+        "#s-itunes",
+        "#s-pocket",
+        "#s-produktmanagement-projektmanagement",
+        "#s-rss",
+        "#s-soundcloud",
+        "http://www.agof.de/",
+        "http://feeds2.feedburner.com/example-com-magazin/",
+        "https://example-com.cloudfront.net/example-com/styles/main-1234567890.css",
+        "https://getpocket.com/edit.php?url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dpocket%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+        "https://twitter.com/intent/tweet?text=BIZ-Chef%3A%20Das%20Bitcoin-System%20kann%20zusammenbrechen&url=https%3A%2F%2Fexample.com%2Fnews%2Fbiz-chef-bitcoin-system-1352881%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
+        "https://twitter.com/intent/tweet?text=Clubnotes.io%20%E2%80%93%20so%20machst%20du%20Notizen%20in%20deinem%20Clubhouse-Talk&url=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dtwitter.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons&via=example-com&lang=de",
+        "https://twitter.com/example-com",
+        "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fbusiness-trends-gaming-zukunft-1350706%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+        "https://www.facebook.com/sharer.php?u=https%3A%2F%2Fexample.com%2Fnews%2Fclubnotesio-machst-notizen-1352852%2F%3Futm_source%3Dfacebook.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+        "https://www.facebook.com/example-comMagazin",
+        "https://www.kununu.com/de/example-com/",
+        "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Fcoinbase-kryptomarktplatz-direktplatzierung-boersenstart-1352871%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+        "https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fexample.com%2Fnews%2Ftwitter-plant-facebook-1352857%2F%3Futm_source%3Dlinkedin.com%26utm_medium%3Dsocial%26utm_campaign%3Dsocial-buttons",
+        "mailto:support@example.com",
+        "//storage.googleapis.com/example.com/assets/foo.png",
+    ];
+
+    links
+}

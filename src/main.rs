@@ -6,12 +6,14 @@ use linkresult::{get_uri_protocol, get_uri_protocol_as_str, get_uri_scope, Link,
 use page::*;
 use std::str::FromStr;
 
+use clap::App;
+use clap::load_yaml;
+
 mod lib;
 
 #[tokio::main]
 async fn main() -> DynResult<()> {
     pretty_env_logger::init();
-    // todo: clean up options to go before the url
     // todo: don't load non-html files, e.g. PNG
     // todo: see docs folder for refactoring
     // todo: respect robots.txt file
@@ -22,17 +24,29 @@ async fn main() -> DynResult<()> {
 }
 
 fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
-    let url = match env::args().nth(1) {
-        Some(url) => Ok(url),
-        _ => Err("Usage: tarantula <url> [<follow_redirects (true|false, default=false)>] [<maximum_depth (default=16)>]"),
-    };
-    let mut run_config = RunConfig::new(url.unwrap());
-    if let Some(follow_redirects) = env::args().nth(2) {
+    let yaml = load_yaml!("cli.yaml");
+    let matches = App::from_yaml(yaml).get_matches();
+
+    let url = matches.value_of("URL").unwrap();
+    let mut run_config = RunConfig::new(url.to_string());
+
+    if let Some(follow_redirects) = matches.value_of("follow_redirects") {
         run_config.follow_redirects = follow_redirects.to_lowercase().eq("true")
     }
-    if let Some(maximum_depth) = env::args().nth(3) {
+    if let Some(maximum_depth) = matches.value_of("maximum_depth") {
         run_config.maximum_depth = u8::from_str(&maximum_depth).unwrap()
     }
+
+    // let url = match env::args().nth(1) {
+    //     Some(url) => Ok(url),
+    //     _ => Err("Usage: tarantula <url> [<follow_redirects (true|false, default=false)>] [<maximum_depth (default=16)>]"),
+    // };
+    // if let Some(follow_redirects) = env::args().nth(2) {
+    //     run_config.follow_redirects = follow_redirects.to_lowercase().eq("true")
+    // }
+    // if let Some(maximum_depth) = env::args().nth(3) {
+    //     run_config.maximum_depth = u8::from_str(&maximum_depth).unwrap()
+    // }
     Ok(run_config)
 }
 
