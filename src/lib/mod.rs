@@ -21,6 +21,8 @@ pub struct RunConfig {
     pub follow_redirects: bool,
     pub maximum_redirects: u8,
     pub maximum_depth: u8,
+    pub ignore_robots_txt: bool,
+    pub keep_html_in_memory: bool,
 }
 
 impl RunConfig {
@@ -30,6 +32,8 @@ impl RunConfig {
             follow_redirects: false,
             maximum_redirects: 10,
             maximum_depth: 16,
+            ignore_robots_txt: false,
+            keep_html_in_memory: false,
         }
     }
 }

@@ -31,13 +31,19 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
     let mut run_config = RunConfig::new(url.to_string());
 
     if let Some(follow_redirects) = matches.value_of("follow_redirects") {
-        run_config.follow_redirects = follow_redirects.to_lowercase().eq("true")
+        run_config.follow_redirects = true
     }
     if let Some(maximum_depth) = matches.value_of("maximum_depth") {
         run_config.maximum_depth = u8::from_str(&maximum_depth).unwrap()
     }
     if let Some(maximum_redirects) = matches.value_of("maximum_redirects") {
         run_config.maximum_redirects = u8::from_str(&maximum_redirects).unwrap()
+    }
+    if let Some(ignore_robots_txt) = matches.value_of("ignore_robots_txt") {
+        run_config.ignore_robots_txt = true
+    }
+    if let Some(keep_html_in_memory) = matches.value_of("keep_html_in_memory") {
+        run_config.keep_html_in_memory = true
     }
 
     Ok(run_config)

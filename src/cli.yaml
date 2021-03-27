@@ -7,6 +7,14 @@ args:
       short: f
       long: follow_redirects
       help: Follow redirects?
+  - ignore_robots_txt:
+      short: i
+      long: ignore_robots_txt
+      help: Ignores entries in the robots.txt file. This might not be compliant with local law! ; default=false
+  - keep_html_in_memory:
+      short: k
+      long: keep_html_in_memory
+      help: Keeps all HTML sources in memory. Will grow mem usage to several GB, depending on URL-complexity. Might lead to OOM errors. ; default=false
   - maximum_depth:
       long: maximum_depth
       help: Maximum depth of traversing nested links; default=16
