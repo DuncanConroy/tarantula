@@ -1,13 +1,9 @@
-use std::fmt::Error;
-use std::pin::Pin;
-use std::str::FromStr;
-
 use async_recursion::async_recursion;
 use chrono::Utc;
-use hyper::{Body, Client, Request, Response, Uri};
+use hyper::{Body, Client, header, Request, Response, Uri};
 use hyper_tls::HttpsConnector;
 
-use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, UriScope};
+use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult};
 use page::Page;
 
 pub mod page;
@@ -15,7 +11,7 @@ pub mod page;
 // A simple type alias so as to DRY.
 pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RunConfig {
     pub url: String,
     pub follow_redirects: bool,
@@ -29,7 +25,7 @@ impl RunConfig {
     pub fn new(url: String) -> RunConfig {
         RunConfig {
             url,
-            follow_redirects: false,
+            follow_redirects: true,
             maximum_redirects: 10,
             maximum_depth: 16,
             ignore_robots_txt: false,
@@ -39,7 +35,7 @@ impl RunConfig {
 }
 
 #[async_recursion]
-async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maximum_redirects: u8) -> DynResult<(Uri, Response<Body>)> {
+async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maximum_redirects: u8, parent_uri: &Option<String>) -> DynResult<(Uri, Response<Body>)> {
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
 
@@ -52,14 +48,14 @@ async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maxi
     match follow_redirects {
         true => {
             let response = client.request(req).await.unwrap();
-            println!("HEAD for {}: {:?}",uri.clone(),response.headers().clone());
+            println!("HEAD for {}: {:?}", uri.clone(), response.headers().clone());
             if current_redirect < maximum_redirects && response.status().is_redirection() {
                 if let Some(location_header) = response.headers().get("location") {
                     // let uri = Uri::from_str(location_header.to_str().unwrap()).unwrap();
-                    let adjusted_uri_str = uri_service::form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap());
+                    let adjusted_uri_str = uri_service::form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap(), parent_uri);
                     let adjusted_uri = adjusted_uri_str.parse::<hyper::Uri>().unwrap();
                     println!("Following redirect {}", adjusted_uri);
-                    let response = fetch_head(adjusted_uri, follow_redirects, current_redirect + 1, maximum_redirects).await;
+                    let response = fetch_head(adjusted_uri, follow_redirects, current_redirect + 1, maximum_redirects, parent_uri).await;
                     return response;
                 }
                 println!("No valid location found in redirect header {:?}", response);
@@ -73,14 +69,14 @@ async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maxi
 pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, maximum_redirects: u8, host: String, protocol: String) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     println!("URI: {}", page.link.uri);
-    let adjusted_uri = uri_service::form_full_url(&protocol, uri.path(), &host).parse::<hyper::Uri>().unwrap();
+    let adjusted_uri = uri_service::form_full_url(&protocol, uri.path(), &host, &page.parent_uri).parse::<hyper::Uri>().unwrap();
     println!("Adjusted URI: {}", adjusted_uri);
 
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
 
     page.response_timings.head_request_start_time = Some(Utc::now());
-    let (uri, head) = fetch_head(adjusted_uri, follow_redirects, 1, maximum_redirects).await.unwrap();
+    let (uri, head) = fetch_head(adjusted_uri, follow_redirects, 1, maximum_redirects, &page.parent_uri).await.unwrap();
     page.response_timings.head_request_complete_time = Some(Utc::now());
     if !head.status().is_success() {
         page.set_response(head).await;
@@ -88,12 +84,21 @@ pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, m
             "HTTP Status: {} :: {:#?}",
             page.get_status_code().unwrap(),
             page.page_response.as_ref().unwrap().headers
-        )
-            .into());
+        ).into());
+    }
+    if let Some(content_type) = head.headers().get(header::CONTENT_TYPE) {
+        let content_type_string = String::from(content_type.to_str().unwrap());
+        if !content_type_string.starts_with("text/html") {
+            return Err(format!(
+                "Skipping URL {}, as content-type is {:?}",
+                uri,
+                content_type
+            ).into());
+        }
     }
 
     page.response_timings.get_request_start_time = Some(Utc::now());
-    let mut response = client.get(uri.to_owned()).await?;
+    let response = client.get(uri.to_owned()).await?;
     page.set_response(response).await;
     page.response_timings.get_request_complete_time = Some(Utc::now());
 
@@ -178,8 +183,9 @@ pub async fn recursive_load_page_and_get_links(
     }
     if let Some(mut descendants) = load_page_arguments.page.descendants {
         for element in links_to_visit {
+            let current_page = Page::new_with_parent(element, load_page_arguments.page.link.uri.clone());
             let recursion_result = recursive_load_page_and_get_links(run_config.clone(), LoadPageArguments {
-                page: Page::new(element),
+                page: current_page,
                 protocol: load_page_arguments.protocol.clone().into(),
                 host: load_page_arguments.host.clone(),
                 known_links: all_known_links.clone(),
@@ -213,7 +219,7 @@ async fn find_links_to_visit(
     maximum_redirects: u8,
     host: &str,
 ) -> DynResult<Vec<Link>> {
-    if let Ok(fetch) = fetch_page(page_to_process, uri, follow_redirects, maximum_redirects, String::from(host), String::from(protocol)).await {
+    if let Ok(()) = fetch_page(page_to_process, uri, follow_redirects, maximum_redirects, String::from(host), String::from(protocol)).await {
         let mut item_body = page_to_process.get_body().as_ref().unwrap().clone();
         page_to_process.response_timings.overall_complete_time = Some(Utc::now());
         if item_body.is_empty() {

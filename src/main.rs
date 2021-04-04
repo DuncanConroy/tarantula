@@ -1,8 +1,7 @@
-use std::env;
 use std::process;
 
 use lib::*;
-use linkresult::{get_uri_protocol, get_uri_protocol_as_str, get_uri_scope, Link, UriScope};
+use linkresult::{get_uri_protocol, get_uri_protocol_as_str, Link, UriScope};
 use page::*;
 use std::str::FromStr;
 
@@ -30,21 +29,20 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
     let url = matches.value_of("URL").unwrap();
     let mut run_config = RunConfig::new(url.to_string());
 
-    if let Some(follow_redirects) = matches.value_of("follow_redirects") {
-        run_config.follow_redirects = true
-    }
+    run_config.follow_redirects = !matches.is_present("ignore_redirects");
+    run_config.ignore_robots_txt =  matches.is_present("ignore_robots_txt");
+
     if let Some(maximum_depth) = matches.value_of("maximum_depth") {
         run_config.maximum_depth = u8::from_str(&maximum_depth).unwrap()
     }
     if let Some(maximum_redirects) = matches.value_of("maximum_redirects") {
         run_config.maximum_redirects = u8::from_str(&maximum_redirects).unwrap()
     }
-    if let Some(ignore_robots_txt) = matches.value_of("ignore_robots_txt") {
-        run_config.ignore_robots_txt = true
-    }
     if let Some(keep_html_in_memory) = matches.value_of("keep_html_in_memory") {
         run_config.keep_html_in_memory = true
     }
+
+    println!("{:#?}", run_config);
 
     Ok(run_config)
 }
@@ -60,7 +58,7 @@ async fn process() {
 
     let protocol_unwrapped = protocol.clone().unwrap();
     let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
-    let mut page = Page::new(Link {
+    let page = Page::new(Link {
         scope: Some(UriScope::Root),
         protocol: protocol.clone(),
         uri,

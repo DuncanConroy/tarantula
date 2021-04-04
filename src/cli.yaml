@@ -3,12 +3,10 @@ version: "1.0"
 author: Daniel Bunte <daniel.bunte.84@gmail.com>
 about: Crawls Websites
 args:
-  - follow_redirects:
-      short: f
-      long: follow_redirects
-      help: Follow redirects?
+  - ignore_redirects:
+      long: ignore_redirects
+      help: Ignore redirects; default=false
   - ignore_robots_txt:
-      short: i
       long: ignore_robots_txt
       help: Ignores entries in the robots.txt file. This might not be compliant with local law! ; default=false
   - keep_html_in_memory:

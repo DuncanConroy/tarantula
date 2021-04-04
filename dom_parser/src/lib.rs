@@ -2,7 +2,7 @@ use chrono::Utc;
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{get_uri_protocol, get_uri_scope, uri_result, Link, UriResult};
+use linkresult::{get_uri_protocol, get_uri_scope, Link, UriResult};
 
 pub fn get_links(parent_protocol: &str, source_domain: &str, body: &str) -> Option<UriResult> {
     let dom = Html::parse_document(body);

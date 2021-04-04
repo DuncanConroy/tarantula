@@ -14,6 +14,7 @@ pub struct Page {
     pub response_timings: ResponseTimings,
     pub descendants: Option<Vec<Page>>,
     // pub parent: Option<&'a Page>,
+    pub parent_uri: Option<String>,
     pub page_response: Option<PageResponse>,
     body: Option<String>,
 }
@@ -25,9 +26,15 @@ impl Page {
             page_response: None,
             response_timings: ResponseTimings::new(),
             // parent: None,
+            parent_uri: None,
             descendants: None,
             body: None,
         }
+    }
+    pub fn new_with_parent(link:Link, parent_uri:String) -> Page{
+        let mut page = Page::new(link);
+        page.parent_uri = Some(parent_uri);
+        page
     }
 
     pub async fn set_response(&mut self, response: Response<Body>) {
