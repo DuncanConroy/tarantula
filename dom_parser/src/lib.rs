@@ -4,19 +4,12 @@ use scraper::{Html, Node};
 
 use linkresult::{get_uri_protocol, get_uri_scope, Link, UriResult};
 
-pub fn get_links(parent_protocol: &str, source_domain: &str, body: &str) -> Option<UriResult> {
-    let dom = Html::parse_document(body);
-    // println!("{:?}", dom);
-    // print(&dom.tree);
+pub fn get_links(parent_protocol: &str, source_domain: &str, body: String) -> Option<UriResult> {
+    let dom = Html::parse_document(&body);
 
-    let mut links = extract_links(&parent_protocol, &source_domain, &dom.tree);
+    let mut links = extract_links(&parent_protocol, &source_domain, dom.tree);
     let parse_complete_time = Utc::now();
     links.sort_by(|a, b| a.uri.cmp(&b.uri));
-    // links.dedup();
-    // println!("Links total: {}", links.len());
-    // links.iter().for_each(|it| println!("{:#?}", it));
-    // let results: UriResult = UriResult { links: links };
-    // println!("uriResults: {:#?}", results);
 
     Some(UriResult {
         links,
@@ -24,16 +17,10 @@ pub fn get_links(parent_protocol: &str, source_domain: &str, body: &str) -> Opti
     })
 }
 
-// fn print(node: &Tree<Node>) {
-//     node.values().for_each(|it| {
-//         println!("{:#?}", it);
-//     });
-// }
-
-fn extract_links<'a>(
+fn extract_links(
     parent_protocol: &str,
     source_domain: &str,
-    node: &'a Tree<Node>,
+    node: Tree<Node>,
 ) -> Vec<Link> {
     let link_attribute_identifiers = vec!["href", "src", "data-src"];
     node.values()
@@ -46,7 +33,7 @@ fn extract_links<'a>(
                 uri: link.trim().to_string(),
                 scope: get_uri_scope(&source_domain, &link),
                 protocol: get_uri_protocol(&parent_protocol, &link),
-                source_tag: Some(current_node.to_owned()),
+                source_tag: Some(current_node.clone()),
             })
         })
         .collect()
@@ -70,7 +57,7 @@ mod tests {
         let html_file = read_to_string(&d).unwrap();
 
         let input = Html::parse_document(html_file.as_str());
-        let result = extract_links("https", "www.example.com", &input.tree);
+        let result = extract_links("https", "www.example.com", input.tree);
         assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79
     }
 }

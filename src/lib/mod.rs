@@ -51,7 +51,6 @@ async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maxi
             println!("HEAD for {}: {:?}", uri.clone(), response.headers().clone());
             if current_redirect < maximum_redirects && response.status().is_redirection() {
                 if let Some(location_header) = response.headers().get("location") {
-                    // let uri = Uri::from_str(location_header.to_str().unwrap()).unwrap();
                     let adjusted_uri_str = uri_service::form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap(), parent_uri);
                     let adjusted_uri = adjusted_uri_str.parse::<hyper::Uri>().unwrap();
                     println!("Following redirect {}", adjusted_uri);
@@ -66,7 +65,7 @@ async fn fetch_head(uri: Uri, follow_redirects: bool, current_redirect: u8, maxi
     }
 }
 
-pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, maximum_redirects: u8, host: String, protocol: String) -> DynResult<()> {
+pub async fn fetch_page(mut page: &mut Page, uri: Uri, run_config: &RunConfig, host: String, protocol: String) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     println!("URI: {}", page.link.uri);
     let adjusted_uri = uri_service::form_full_url(&protocol, uri.path(), &host, &page.parent_uri).parse::<hyper::Uri>().unwrap();
@@ -76,7 +75,7 @@ pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, m
     let client = Client::builder().build::<_, hyper::Body>(https);
 
     page.response_timings.head_request_start_time = Some(Utc::now());
-    let (uri, head) = fetch_head(adjusted_uri, follow_redirects, 1, maximum_redirects, &page.parent_uri).await.unwrap();
+    let (uri, head) = fetch_head(adjusted_uri, run_config.follow_redirects, 1, run_config.maximum_redirects, &page.parent_uri).await.unwrap();
     page.response_timings.head_request_complete_time = Some(Utc::now());
     if !head.status().is_success() {
         page.set_response(head).await;
@@ -106,13 +105,6 @@ pub async fn fetch_page(mut page: &mut Page, uri: Uri, follow_redirects: bool, m
         if !content_type.contains("text/html") {
             return Err(format!("Content-Type: {}", content_type).into());
         }
-
-        // println!("Status: {}", response.status());
-        // println!("Headers: {:#?}\n", response.headers());
-
-        // println!("BODY: {}", body);
-
-        // println!("\nDone!");
         return Ok(());
     }
     Err(format!("No content-type header found! {:?}", head).into())
@@ -127,7 +119,7 @@ pub struct LoadPageArguments {
     pub depth: u8,
 }
 
-unsafe impl<'a, 'b> Send for LoadPageArguments {}
+unsafe impl Send for LoadPageArguments {}
 
 #[async_recursion]
 pub async fn recursive_load_page_and_get_links(
@@ -163,8 +155,7 @@ pub async fn recursive_load_page_and_get_links(
         &mut load_page_arguments.page,
         item_uri,
         load_page_arguments.same_domain_only,
-        run_config.follow_redirects,
-        run_config.maximum_redirects,
+        &run_config,
         &load_page_arguments.host,
     )
         .await
@@ -215,12 +206,11 @@ async fn find_links_to_visit(
     mut page_to_process: &mut Page,
     uri: Uri,
     same_domain_only: bool,
-    follow_redirects: bool,
-    maximum_redirects: u8,
+    run_config: &RunConfig,
     host: &str,
 ) -> DynResult<Vec<Link>> {
-    if let Ok(()) = fetch_page(page_to_process, uri, follow_redirects, maximum_redirects, String::from(host), String::from(protocol)).await {
-        let mut item_body = page_to_process.get_body().as_ref().unwrap().clone();
+    if let Ok(()) = fetch_page(page_to_process, uri, run_config, String::from(host), String::from(protocol)).await {
+        let item_body = page_to_process.get_body().as_ref().unwrap().clone();
         page_to_process.response_timings.overall_complete_time = Some(Utc::now());
         if item_body.is_empty() {
             println!("No body found, no HTML to parse -> skipping");
@@ -228,7 +218,7 @@ async fn find_links_to_visit(
         }
 
         let uri_result: UriResult =
-            dom_parser::get_links(&protocol, source_domain, &mut item_body).unwrap();
+            dom_parser::get_links(&protocol, source_domain, item_body).unwrap();
         page_to_process.response_timings.parse_complete_time = Some(uri_result.parse_complete_time);
 
         let result: Vec<Link> = if same_domain_only {
@@ -244,6 +234,9 @@ async fn find_links_to_visit(
             .map(|it| it)
             .cloned()
             .collect();
+        if !run_config.keep_html_in_memory {
+            page_to_process.reset_body();
+        }
         return Ok(links_to_visit);
     };
 

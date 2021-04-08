@@ -1,4 +1,5 @@
 use hyper::{Body, HeaderMap, Response, StatusCode, Uri, Version};
+
 use linkresult::{Link, ResponseTimings};
 
 #[derive(Debug, Clone)]
@@ -31,7 +32,7 @@ impl Page {
             body: None,
         }
     }
-    pub fn new_with_parent(link:Link, parent_uri:String) -> Page{
+    pub fn new_with_parent(link: Link, parent_uri: String) -> Page {
         let mut page = Page::new(link);
         page.parent_uri = Some(parent_uri);
         page
@@ -46,7 +47,7 @@ impl Page {
         });
         self.body = Some(
             String::from_utf8_lossy(hyper::body::to_bytes(body).await.unwrap().as_ref())
-                .to_string(),
+                .to_string()
         );
     }
 
@@ -99,5 +100,11 @@ impl Page {
 
     pub fn get_uri(&self) -> Uri {
         self.link.uri.parse::<hyper::Uri>().unwrap()
+    }
+
+    pub fn reset_body(&mut self) {
+        let mut x = self.body.take().unwrap();
+        x.truncate(0);
+        drop(x);
     }
 }
