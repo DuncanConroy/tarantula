@@ -2,43 +2,44 @@ use hyper::Uri;
 
 use crate::{get_uri_protocol, get_uri_scope, UriProtocol, UriScope};
 
-pub fn form_full_url(protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> String {
+pub fn form_full_url(protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
+    println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
     if let Some(scope) = get_uri_scope(host, uri) {
         return match scope {
             UriScope::Root => {
-                create_uri_string(protocol, host, "/")
+                create_uri_string(protocol, host, "/").parse::<hyper::Uri>().unwrap()
             }
             UriScope::SameDomain => {
                 let sanitized_uri = sanitize_url(uri.into(), parent_uri);
                 let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
-                create_uri_string(protocol, host, &adjusted_uri)
+                create_uri_string(protocol, host, &adjusted_uri).parse::<hyper::Uri>().unwrap()
             }
             UriScope::Anchor => {
                 let sanitized_uri = sanitize_url(uri.into(), parent_uri);
                 let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
-                create_uri_string(protocol, host, &adjusted_uri)
+                create_uri_string(protocol, host, &adjusted_uri).parse::<hyper::Uri>().unwrap()
             }
             _ => {
                 if let Some(uri_protocol) = get_uri_protocol(protocol, uri) {
                     if uri_protocol == UriProtocol::IMPLICIT {
-                        format!("{}:{}", protocol, uri)
+                        format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap()
                     } else {
-                        String::from(uri)
+                        String::from(uri).parse::<hyper::Uri>().unwrap()
                     }
                 } else {
-                    String::from(uri)
+                    String::from(uri).parse::<hyper::Uri>().unwrap()
                 }
             }
         };
     }
-    String::from(uri)
+    String::from(uri).parse::<hyper::Uri>().unwrap()
 }
 
 fn prefix_uri_with_forward_slash(uri: &str) -> String {
     if uri.starts_with("/") || uri.starts_with("http://") || uri.starts_with("https://") { uri.to_string() } else { format!("/{}", uri) }
 }
 
-pub fn create_uri_string(protocol: &str, host: &str, link: &str) -> String {
+fn create_uri_string(protocol: &str, host: &str, link: &str) -> String {
     let link_string = String::from(link);
     let url_string = if link_string.starts_with("http") {
         link_string.to_owned()
@@ -49,7 +50,7 @@ pub fn create_uri_string(protocol: &str, host: &str, link: &str) -> String {
     url_string
 }
 
-fn sanitize_url(uri:String, parent_uri: &Option<String>) -> String {
+fn sanitize_url(uri: String, parent_uri: &Option<String>) -> String {
     println!("sanitize uri: {}", uri);
     if !uri.contains("../") {
         return uri;
@@ -65,8 +66,7 @@ fn sanitize_url(uri:String, parent_uri: &Option<String>) -> String {
     for current in parts {
         if current != ".." {
             parts_out.push(current);
-        }
-        else {
+        } else {
             parts_out.pop();
         }
         println!("parts_out: {:?}", parts_out);
