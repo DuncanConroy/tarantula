@@ -4,35 +4,34 @@ use crate::{get_uri_protocol, get_uri_scope, UriProtocol, UriScope};
 
 pub fn form_full_url(protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
     println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
+    let to_uri = |input:&str| String::from(input).parse::<hyper::Uri>().unwrap();
+    let do_sanitize = |uri: &str, parent_uri: &Option<String>| -> Uri {
+        let sanitized_uri = sanitize_url(uri.into(), parent_uri);
+        let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
+        to_uri(&create_uri_string(protocol, host, &adjusted_uri))
+    };
     if let Some(scope) = get_uri_scope(host, uri) {
         return match scope {
             UriScope::Root => {
-                create_uri_string(protocol, host, "/").parse::<hyper::Uri>().unwrap()
+                to_uri(&create_uri_string(protocol, host, "/"))
             }
             UriScope::SameDomain => {
-                let sanitized_uri = sanitize_url(uri.into(), parent_uri);
-                let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
-                create_uri_string(protocol, host, &adjusted_uri).parse::<hyper::Uri>().unwrap()
+                do_sanitize(uri, parent_uri)
             }
             UriScope::Anchor => {
-                let sanitized_uri = sanitize_url(uri.into(), parent_uri);
-                let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
-                create_uri_string(protocol, host, &adjusted_uri).parse::<hyper::Uri>().unwrap()
+                do_sanitize(uri, parent_uri)
             }
             _ => {
                 if let Some(uri_protocol) = get_uri_protocol(protocol, uri) {
                     if uri_protocol == UriProtocol::IMPLICIT {
-                        format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap()
-                    } else {
-                        String::from(uri).parse::<hyper::Uri>().unwrap()
+                        return format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap();
                     }
-                } else {
-                    String::from(uri).parse::<hyper::Uri>().unwrap()
                 }
+                to_uri(uri)
             }
         };
     }
-    String::from(uri).parse::<hyper::Uri>().unwrap()
+    to_uri(uri)
 }
 
 fn prefix_uri_with_forward_slash(uri: &str) -> String {
@@ -83,6 +82,7 @@ pub fn create_uri(protocol: &str, host: &str, link: &String) -> Uri {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Add;
 
     #[test]
     fn form_full_url_returns_correct_uri() {
@@ -124,7 +124,7 @@ mod tests {
         let host = "example.com";
         input.iter()
             .for_each(|(parent_uri, uri, expected)| {
-                let result = form_full_url("https", uri, host, &Some(String::from(parent_uri)));
+                let result = form_full_url("https", uri, host, &Some(String::from("").add(parent_uri)));
                 let formatted = format!("{}{}", host, uri);
                 let scope = get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
