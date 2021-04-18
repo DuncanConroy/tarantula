@@ -15,7 +15,9 @@ mod lib;
 #[tokio::main]
 async fn main() -> DynResult<()> {
     pretty_env_logger::init();
+    // todo: restructure memory layout to use a centralized list of strings/uris, e.g. like string table in AVM
     // todo: cleanup memory consumption
+    // todo: stream results to WHERE? :D
     // TODO: multi-threaded
     process().await;
     Ok(())
@@ -57,12 +59,7 @@ async fn process() {
 
     let protocol_unwrapped = protocol.clone().unwrap();
     let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
-    let page = Page::new(Link {
-        scope: Some(UriScope::Root),
-        protocol: protocol.clone(),
-        uri,
-        source_tag: None,
-    });
+    let page = Page::new_root(uri);
 
     let load_page_arguments = lib::LoadPageArguments {
         host: page.get_uri().host().unwrap().into(),

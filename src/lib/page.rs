@@ -1,6 +1,6 @@
 use hyper::{Body, HeaderMap, Response, StatusCode, Uri, Version};
 
-use linkresult::{Link, ResponseTimings};
+use linkresult::{Link, ResponseTimings, get_uri_protocol, UriScope};
 
 #[derive(Debug, Clone)]
 pub struct PageResponse {
@@ -21,7 +21,7 @@ pub struct Page {
 }
 
 impl Page {
-    pub fn new(link: Link) -> Page {
+    fn new(link: Link) -> Page {
         Page {
             link,
             page_response: None,
@@ -32,10 +32,21 @@ impl Page {
             body: None,
         }
     }
+
     pub fn new_with_parent(link: Link, parent_uri: String) -> Page {
         let mut page = Page::new(link);
         page.parent_uri = Some(parent_uri);
         page
+    }
+
+    pub fn new_root(uri: String)->Page{
+        let protocol = get_uri_protocol("", &uri);
+        Page::new(Link {
+            scope: Some(UriScope::Root),
+            protocol: protocol.clone(),
+            uri,
+            source_tag: None,
+        })
     }
 
     pub async fn set_response(&mut self, response: Response<Body>) {

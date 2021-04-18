@@ -102,7 +102,6 @@ mod tests {
             ("https://twitter.com/example-com", "https://twitter.com/example-com"),
             ("mailto:support@example.com", "mailto:support@example.com"),
             ("//storage.googleapis.com/example.com/assets/foo.png", "https://storage.googleapis.com/example.com/assets/foo.png"),
-            ("//storage.googleapis.com/example.com/assets/foo.png", "https://storage.googleapis.com/example.com/assets/foo.png"),
         ];
 
         let host = "example.com";

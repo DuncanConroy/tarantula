@@ -19,7 +19,7 @@ pub fn get_links(parent_protocol: &str, source_domain: &str, body: String) -> Op
 
 fn extract_links(
     parent_protocol: &str,
-    source_domain: &str,
+    host: &str,
     node: Tree<Node>,
 ) -> Vec<Link> {
     let link_attribute_identifiers = vec!["href", "src", "data-src"];
@@ -31,7 +31,7 @@ fn extract_links(
                 .find(|attribute| link_attribute_identifiers.contains(&attribute.0))?;
             Some(Link {
                 uri: link.trim().to_string(),
-                scope: get_uri_scope(&source_domain, &link),
+                scope: get_uri_scope(&host, &link),
                 protocol: get_uri_protocol(&parent_protocol, &link),
                 source_tag: Some(current_node.clone()),
             })

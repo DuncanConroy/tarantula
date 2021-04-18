@@ -1,90 +1,100 @@
+use std::collections::HashMap;
+
 use fancy_regex::escape;
 use fancy_regex::Regex;
+
 pub use uri_result::*;
 
 pub mod uri_result;
 pub mod uri_service;
 
-pub fn get_uri_scope(source_domain: &str, uri: &str) -> Option<UriScope> {
-    let domain_regex = escape(source_domain).replace("-", "\"");
+#[derive(Eq, PartialEq, Hash)]
+enum RegexType {
+    Anchor,
+    DifferentSubdomain,
+    DifferentSubdomainWithProtocol,
+    EXTERNAL,
+    ExternalWithProtocol,
+    SameDomain,
+    SameDomainWithProtocol,
+    UnknownPrefix,
+}
 
-    match uri {
-        uri if (uri.eq("/")) => Some(UriScope::Root),
-        uri if(uri.eq(source_domain)) => Some(UriScope::Root),
-        uri if(uri.eq(&format!("{}/", source_domain))) => Some(UriScope::Root),
-        uri if(uri.eq(&format!("http://{}", source_domain))) => Some(UriScope::Root),
-        uri if(uri.eq(&format!("http://{}/", source_domain))) => Some(UriScope::Root),
-        uri if(uri.eq(&format!("https://{}", source_domain))) => Some(UriScope::Root),
-        uri if(uri.eq(&format!("https://{}/", source_domain))) => Some(UriScope::Root),
-        uri if (uri.starts_with("mailto:")) => Some(UriScope::Mailto),
-        uri if (uri.starts_with("data:image/")) => Some(UriScope::EmbeddedImage),
-        uri if (uri.starts_with("javascript:")) => Some(UriScope::Code),
-        uri if (Regex::new("^(?!https?)[a-zA-Z0-9]+:.*")
-            .unwrap()
-            .is_match(&uri)
-            .unwrap()) =>
-        {
-            Some(UriScope::UnknownPrefix)
+struct RegexesSingleton {
+    instance: Option<HashMap<RegexType, Regex>>,
+}
+
+impl RegexesSingleton {
+    fn is_match(&self, key: RegexType, uri: &str) -> bool {
+        self.instance.as_ref().unwrap().get(&key).unwrap().is_match(uri).unwrap()
+    }
+
+    fn is_initialized(&self) -> bool {
+        return self.instance.is_some();
+    }
+
+    fn init(&mut self, host: &str)
+    {
+        if self.instance.is_some() {
+            return;
         }
-        uri if (Regex::new("^/?#").unwrap().is_match(&uri).unwrap()) => Some(UriScope::Anchor),
-        uri if (Regex::new(&format!("^//.+\\.(?:{}).*$", domain_regex))
-            .unwrap()
-            .is_match(&uri)
-            .unwrap()) =>
-        {
-            Some(UriScope::DifferentSubDomain)
+
+        let domain_regex = escape(host).replace("-", "\"");
+        let mut hash_map = HashMap::with_capacity(8);
+        hash_map.insert(RegexType::Anchor, Regex::new("^/?#").unwrap());
+        hash_map.insert(RegexType::DifferentSubdomain, Regex::new(&format!("^//.+\\.(?:{}).*$", domain_regex)).unwrap());
+        hash_map.insert(RegexType::DifferentSubdomainWithProtocol, Regex::new(&format!("^https?://[^/=?]*\\.{}.*$", domain_regex).to_owned()).unwrap());
+        hash_map.insert(RegexType::EXTERNAL, Regex::new(&format!("^//(?!{}).*$", domain_regex)).unwrap());
+        hash_map.insert(RegexType::ExternalWithProtocol, Regex::new("^https?://.*").unwrap());
+        hash_map.insert(RegexType::SameDomain, Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$").unwrap());
+        hash_map.insert(RegexType::SameDomainWithProtocol, Regex::new(&format!("^https?://{}", domain_regex).to_owned()).unwrap());
+        hash_map.insert(RegexType::UnknownPrefix, Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap());
+        self.instance = Some(hash_map);
+    }
+}
+
+static mut REGEXES: RegexesSingleton = RegexesSingleton { instance: None };
+
+pub fn get_uri_scope(host: &str, uri: &str) -> Option<UriScope> {
+    unsafe {
+        REGEXES.init(host);
+
+        match uri {
+            uri if uri.eq("/") => Some(UriScope::Root),
+            uri if uri.eq(host) => Some(UriScope::Root),
+            uri if uri.eq(&format!("{}/", host)) => Some(UriScope::Root),
+            uri if uri.eq(&format!("http://{}", host)) => Some(UriScope::Root),
+            uri if uri.eq(&format!("http://{}/", host)) => Some(UriScope::Root),
+            uri if uri.eq(&format!("https://{}", host)) => Some(UriScope::Root),
+            uri if uri.eq(&format!("https://{}/", host)) => Some(UriScope::Root),
+            uri if uri.starts_with("mailto:") => Some(UriScope::Mailto),
+            uri if uri.starts_with("data:image/") => Some(UriScope::EmbeddedImage),
+            uri if uri.starts_with("javascript:") => Some(UriScope::Code),
+            uri if REGEXES.is_match(RegexType::UnknownPrefix, uri) => { Some(UriScope::UnknownPrefix) }
+            uri if REGEXES.is_match(RegexType::Anchor, uri) => Some(UriScope::Anchor),
+            uri if REGEXES.is_match(RegexType::DifferentSubdomain, uri) => { Some(UriScope::DifferentSubDomain) }
+            uri if REGEXES.is_match(RegexType::EXTERNAL, uri) => { Some(UriScope::External) }
+            uri if REGEXES.is_match(RegexType::SameDomain, uri) => { Some(UriScope::SameDomain) }
+            uri if REGEXES.is_match(RegexType::SameDomainWithProtocol, uri) => { Some(UriScope::SameDomain) }
+            uri if REGEXES.is_match(RegexType::DifferentSubdomainWithProtocol, uri) => { Some(UriScope::DifferentSubDomain) }
+            uri if REGEXES.is_match(RegexType::ExternalWithProtocol, uri) => { Some(UriScope::External) }
+            _ => None,
         }
-        uri if (Regex::new(&format!("^//(?!{}).*$", domain_regex))
-            .unwrap()
-            .is_match(&uri)
-            .unwrap()) =>
-        {
-            Some(UriScope::External)
-        }
-        uri if (Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$")
-            .unwrap()
-            .is_match(&uri)
-            .unwrap()) =>
-        {
-            Some(UriScope::SameDomain)
-        }
-        uri if (Regex::new(&format!("^https?://{}", domain_regex).to_owned())
-            .unwrap()
-            .is_match(&uri)
-            .unwrap()) =>
-        {
-            Some(UriScope::SameDomain)
-        }
-        uri if (Regex::new(&format!("^https?://[^/=?]*\\.{}.*$", domain_regex).to_owned())
-            .unwrap()
-            .is_match(&uri)
-            .unwrap()) =>
-        {
-            Some(UriScope::DifferentSubDomain)
-        }
-        uri if (Regex::new("^https?://.*").unwrap().is_match(&uri).unwrap()) => {
-            Some(UriScope::External)
-        }
-        _ => None,
     }
 }
 
 pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol> {
-    match uri {
-        uri if uri.starts_with("https") => Some(UriProtocol::HTTPS),
-        uri if uri.starts_with("http") => Some(UriProtocol::HTTP),
-        uri if uri.starts_with("data:") => None,
-        uri if uri.starts_with("mailto:") => None,
-        uri if (Regex::new("^(?!https?)[a-zA-Z0-9]+:.*")
-            .unwrap()
-            .is_match(&uri)
-            .unwrap()) =>
-        {
-            None
+    unsafe {
+        match uri {
+            uri if uri.starts_with("https") => Some(UriProtocol::HTTPS),
+            uri if uri.starts_with("http") => Some(UriProtocol::HTTP),
+            uri if uri.starts_with("data:") => None,
+            uri if uri.starts_with("mailto:") => None,
+            uri if REGEXES.is_initialized() && REGEXES.is_match(RegexType::UnknownPrefix, uri) || Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap().is_match(uri).unwrap() => None,
+            uri if uri.eq("") => None,
+            uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
+            _ => get_uri_protocol("", parent_protocol),
         }
-        uri if uri.eq("") => None,
-        uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
-        _ => get_uri_protocol("", &parent_protocol),
     }
 }
 
@@ -98,9 +108,10 @@ pub fn get_uri_protocol_as_str(protocol: &UriProtocol) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rand::distributions::Alphanumeric;
     use rand::Rng;
+
+    use super::*;
 
     #[test]
     fn get_uri_scope_returns_correct_type() {
@@ -121,7 +132,6 @@ mod tests {
             ("/account/login?redirect=https://example.com/", Some(UriScope::SameDomain)),
             ("/agb/", Some(UriScope::SameDomain)),
             ("/ausgabe/example-com-62-mindful-leadership/", Some(UriScope::SameDomain)),
-            // ("//same-domain-deeplink/to-somewhere", Some(UriScope::External)), // should actually be invalid, don't care for now
             ("//cdn.external-domain.com/example.com/some-big-file.RAW", Some(UriScope::External)),
             ("//storage.googleapis.com/example.com/foo.png", Some(UriScope::External)),
             ("//foo.example.com/some-file.png", Some(UriScope::DifferentSubDomain)),
