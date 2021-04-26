@@ -69,7 +69,7 @@ async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maxi
         Ok((uri, client.request(req).await.unwrap()))
     } else {
         let response = client.request(req).await.unwrap();
-        println!("HEAD for {}: {:?}", uri.clone(), response.headers().clone());
+        println!("HEAD for {}: {:?}", uri, response.headers());
         if current_redirect < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
                 let adjusted_uri = uri_service::form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap(), parent_uri);
@@ -144,7 +144,7 @@ pub async fn recursive_load_page_and_get_links(
     run_config: RunConfig,
     mut load_page_arguments: LoadPageArguments,
 ) -> DynResult<(Page, Vec<String>)> {
-    if load_page_arguments.depth > run_config.maximum_depth.clone() {
+    if load_page_arguments.depth > run_config.maximum_depth {
         println!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
         return Ok((load_page_arguments.page, load_page_arguments.known_links));
     }

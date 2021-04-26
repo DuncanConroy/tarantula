@@ -5,22 +5,16 @@ use crate::{get_uri_protocol, get_uri_scope, UriProtocol, UriScope};
 pub fn form_full_url(protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
     println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
     let to_uri = |input:&str| String::from(input).parse::<hyper::Uri>().unwrap();
-    let do_sanitize = |uri: &str, parent_uri: &Option<String>| -> Uri {
+    let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
         let sanitized_uri = sanitize_url(uri.into(), parent_uri);
         let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
         to_uri(&create_uri_string(protocol, host, &adjusted_uri))
     };
     if let Some(scope) = get_uri_scope(host, uri) {
         return match scope {
-            UriScope::Root => {
-                to_uri(&create_uri_string(protocol, host, "/"))
-            }
-            UriScope::SameDomain => {
-                do_sanitize(uri, parent_uri)
-            }
-            UriScope::Anchor => {
-                do_sanitize(uri, parent_uri)
-            }
+            UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
+            UriScope::SameDomain => do_normalize(uri, parent_uri),
+            UriScope::Anchor =>  do_normalize(uri, parent_uri),
             _ => {
                 if let Some(uri_protocol) = get_uri_protocol(protocol, uri) {
                     if uri_protocol == UriProtocol::IMPLICIT {
@@ -50,7 +44,7 @@ fn create_uri_string(protocol: &str, host: &str, link: &str) -> String {
 }
 
 fn sanitize_url(uri: String, parent_uri: &Option<String>) -> String {
-    println!("sanitize uri: {}", uri);
+    println!("normalize uri: {}", uri);
     if !uri.contains("../") {
         return uri;
     }
@@ -115,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_url() {
+    fn normalize_url() {
         let input = vec![
             ("https://www.example.com/about/appsecurity/tools/", "../../../about/appsecurity/research/presentations/", "https://www.example.com/about/appsecurity/research/presentations/"),
         ];

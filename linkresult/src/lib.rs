@@ -30,12 +30,12 @@ impl RegexesSingleton {
     }
 
     fn is_initialized(&self) -> bool {
-        return self.instance.is_some();
+        return self.instance.as_ref().is_some();
     }
 
     fn init(&mut self, host: &str)
     {
-        if self.instance.is_some() {
+        if self.is_initialized() {
             return;
         }
 
@@ -49,7 +49,7 @@ impl RegexesSingleton {
         hash_map.insert(RegexType::SameDomain, Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$").unwrap());
         hash_map.insert(RegexType::SameDomainWithProtocol, Regex::new(&format!("^https?://{}", domain_regex).to_owned()).unwrap());
         hash_map.insert(RegexType::UnknownPrefix, Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap());
-        self.instance = Some(hash_map);
+        self.instance.replace(hash_map);
     }
 }
 
@@ -84,17 +84,15 @@ pub fn get_uri_scope(host: &str, uri: &str) -> Option<UriScope> {
 }
 
 pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol> {
-    unsafe {
-        match uri {
-            uri if uri.starts_with("https") => Some(UriProtocol::HTTPS),
-            uri if uri.starts_with("http") => Some(UriProtocol::HTTP),
-            uri if uri.starts_with("data:") => None,
-            uri if uri.starts_with("mailto:") => None,
-            uri if REGEXES.is_initialized() && REGEXES.is_match(RegexType::UnknownPrefix, uri) || Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap().is_match(uri).unwrap() => None,
-            uri if uri.eq("") => None,
-            uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
-            _ => get_uri_protocol("", parent_protocol),
-        }
+    match uri {
+        uri if uri.starts_with("https") => Some(UriProtocol::HTTPS),
+        uri if uri.starts_with("http") => Some(UriProtocol::HTTP),
+        uri if uri.starts_with("data:") => None,
+        uri if uri.starts_with("mailto:") => None,
+        uri if unsafe { REGEXES.is_initialized() && REGEXES.is_match(RegexType::UnknownPrefix, uri) || Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap().is_match(uri).unwrap() } => None,
+        uri if uri.eq("") => None,
+        uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
+        _ => get_uri_protocol("", parent_protocol),
     }
 }
 
