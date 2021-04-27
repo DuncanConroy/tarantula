@@ -4,8 +4,9 @@ use hyper::{Body, Client, header, Request, Response, Uri};
 use hyper_tls::HttpsConnector;
 use robotparser::RobotFileParser;
 
-use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult};
+use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, get_uri_protocol, get_uri_protocol_as_str};
 use page::Page;
+use std::process;
 
 pub mod page;
 
@@ -54,6 +55,30 @@ impl RunConfig {
     }
 }
 
+pub async fn init(run_config: RunConfig) -> DynResult<(Page, Vec<String>)> {
+    let uri = run_config.url.clone();
+    let protocol = get_uri_protocol("", &uri);
+    if let None = protocol {
+        eprintln!("Invalid protocol {:?} in uri {}", protocol, uri);
+        process::exit(1)
+    }
+
+    let protocol_unwrapped = protocol.clone().unwrap();
+    let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
+    let page = Page::new_root(uri);
+
+    let load_page_arguments = LoadPageArguments {
+        host: page.get_uri().host().unwrap().into(),
+        protocol: protocol_str.into(),
+        known_links: vec![],
+        page,
+        same_domain_only: true,
+        depth: 1,
+    };
+
+    recursive_load_page_and_get_links(run_config, load_page_arguments).await
+}
+
 #[async_recursion]
 async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maximum_redirects: u8, parent_uri: &Option<String>) -> DynResult<(Uri, Response<Body>)> {
     let https = HttpsConnector::new();
@@ -83,7 +108,7 @@ async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maxi
     }
 }
 
-pub async fn fetch_page(mut page: &mut Page, uri: Uri, run_config: &RunConfig, host: String, protocol: String) -> DynResult<()> {
+async fn fetch_page(mut page: &mut Page, uri: Uri, run_config: &RunConfig, host: String, protocol: String) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     println!("URI: {}", page.link.uri);
     let adjusted_uri = uri_service::form_full_url(&protocol, uri.path(), &host, &page.parent_uri);
@@ -140,7 +165,7 @@ pub struct LoadPageArguments {
 unsafe impl Send for LoadPageArguments {}
 
 #[async_recursion]
-pub async fn recursive_load_page_and_get_links(
+async fn recursive_load_page_and_get_links(
     run_config: RunConfig,
     mut load_page_arguments: LoadPageArguments,
 ) -> DynResult<(Page, Vec<String>)> {

@@ -50,27 +50,7 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
 
 async fn process() {
     let run_config = parse_runconfig_from_args().unwrap();
-    let uri = run_config.url.clone();
-    let protocol = get_uri_protocol("", &uri);
-    if let None = protocol {
-        eprintln!("Invalid protocol {:?} in uri {}", protocol, uri);
-        process::exit(1)
-    }
-
-    let protocol_unwrapped = protocol.clone().unwrap();
-    let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
-    let page = Page::new_root(uri);
-
-    let load_page_arguments = lib::LoadPageArguments {
-        host: page.get_uri().host().unwrap().into(),
-        protocol: protocol_str.into(),
-        known_links: vec![],
-        page,
-        same_domain_only: true,
-        depth: 1,
-    };
-
-    let page = lib::recursive_load_page_and_get_links(run_config, load_page_arguments).await;
+    let page = lib::init(run_config).await;
 
     println!("Finished.");
     println!("Tarantula result:\n{:?}", page.unwrap())
