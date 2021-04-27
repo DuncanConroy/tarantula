@@ -1,4 +1,4 @@
-use std::process;
+use std::{process, thread};
 use std::str::FromStr;
 
 use clap::App;
@@ -9,6 +9,7 @@ use robotparser::RobotFileParser;
 use lib::*;
 use linkresult::{get_uri_protocol, get_uri_protocol_as_str, Link, UriScope};
 use page::*;
+use std::sync::mpsc;
 
 mod lib;
 
@@ -50,7 +51,13 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
 
 async fn process() {
     let run_config = parse_runconfig_from_args().unwrap();
-    let page = lib::init(run_config).await;
+    let (tx, rx) = mpsc::channel();
+    let handle = tokio::spawn(async move {
+        let page_result = lib::init(run_config).await;
+        tx.send(page_result);
+    });
+
+    let page = rx.recv().unwrap();
 
     println!("Finished.");
     println!("Tarantula result:\n{:?}", page.unwrap())
