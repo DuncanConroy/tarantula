@@ -164,13 +164,13 @@ mod tests {
         input_to_output
             .iter()
             .map(|it| (&it.0, &it.1, get_uri_scope("example.com", it.0)))
-            .for_each(|it| {
+            .for_each(|it|
                 assert_eq!(
                     it.1, &it.2,
                     "{} ::> expected: {:?} got: {:?}",
                     it.0, it.1, it.2
                 )
-            })
+            )
     }
 
     #[test]

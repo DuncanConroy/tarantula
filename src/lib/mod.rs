@@ -153,13 +153,13 @@ async fn fetch_page(mut page: &mut Page, uri: Uri, run_config: &RunConfig, host:
     Err(format!("No content-type header found! {:?}", head).into())
 }
 
-pub struct LoadPageArguments {
-    pub page: Page,
-    pub protocol: String,
-    pub host: String,
-    pub known_links: Vec<String>,
-    pub same_domain_only: bool,
-    pub depth: u8,
+struct LoadPageArguments {
+    page: Page,
+    protocol: String,
+    host: String,
+    known_links: Vec<String>,
+    same_domain_only: bool,
+    depth: u8,
 }
 
 unsafe impl Send for LoadPageArguments {}
