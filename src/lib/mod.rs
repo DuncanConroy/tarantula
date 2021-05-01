@@ -9,6 +9,7 @@ use page::Page;
 use std::process;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use std::collections::HashSet;
 
 pub mod page;
 
@@ -69,7 +70,7 @@ pub async fn init(run_config: RunConfig) -> Option<Page> {
     let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
     let page = Page::new_root(uri);
 
-    let all_known_links = Arc::new(Mutex::new(vec![]));
+    let all_known_links = Arc::new(Mutex::new(HashSet::new()));
     let load_page_arguments = LoadPageArguments {
         host: page.get_uri().host().unwrap().into(),
         protocol: protocol_str.into(),
@@ -170,7 +171,7 @@ unsafe impl Send for LoadPageArguments {}
 async fn recursive_load_page_and_get_links(
     run_config: RunConfig,
     mut load_page_arguments: LoadPageArguments,
-    all_known_links: Arc<Mutex<Vec<String>>>,
+    all_known_links: Arc<Mutex<HashSet<String>>>,
 ) -> DynResult<Page> {
     if load_page_arguments.depth > run_config.maximum_depth {
         println!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
@@ -179,7 +180,7 @@ async fn recursive_load_page_and_get_links(
 
     println!("all_known_links: {:#?}", all_known_links.lock().await);
 
-    all_known_links.lock().await.push(load_page_arguments.page.link.uri.clone());
+    all_known_links.lock().await.insert(load_page_arguments.page.link.uri.clone());
     let item_uri = uri_service::form_full_url(
         &load_page_arguments.protocol,
         &load_page_arguments.page.link.uri,
@@ -213,7 +214,8 @@ async fn recursive_load_page_and_get_links(
         );
     }
 
-    all_known_links.lock().await.append(&mut links_to_visit.iter_mut().map(|it| it.uri.clone()).collect());
+    let links_to_visit_as_string = links_to_visit.iter_mut().map(|it| it.uri.clone()).collect();
+    all_known_links.lock().await.extend::<Vec<String>>(links_to_visit_as_string);
 
     if links_to_visit.len() > 0 && load_page_arguments.page.descendants.is_none() {
         load_page_arguments.page.descendants = Some(vec![]);
@@ -250,7 +252,7 @@ async fn recursive_load_page_and_get_links(
 async fn find_links_to_visit(
     source_domain: &str,
     protocol: &str,
-    all_known_links: Arc<Mutex<Vec<String>>>,
+    all_known_links: Arc<Mutex<HashSet<String>>>,
     mut page_to_process: &mut Page,
     uri: Uri,
     same_domain_only: bool,
@@ -313,7 +315,7 @@ fn can_crawl(user_agent: &str, item_uri: &Uri) -> bool {
     can_crawl
 }
 
-async fn filter_links_to_visit(input: Vec<Link>, known_links: Arc<Mutex<Vec<String>>>) -> Vec<Link> {
+async fn filter_links_to_visit(input: Vec<Link>, known_links: Arc<Mutex<HashSet<String>>>) -> Vec<Link> {
     let known_links_unlocked = known_links.lock().await;
     input.iter()
         .filter(|it| !known_links_unlocked.contains(&it.uri))
@@ -354,10 +356,10 @@ mod tests {
 
     #[tokio::test]
     async fn filter_links_to_visit_filters_correctly() {
-        let known_links = Arc::new(Mutex::new(vec![
-            String::from("https://example.com/foo"),
-            String::from("https://example.com/bar"),
-        ]));
+        let mut links = HashSet::new();
+        links.insert(String::from("https://example.com/foo"));
+        links.insert(String::from("https://example.com/bar"));
+        let known_links = Arc::new(Mutex::new(links));
 
         let result = filter_links_to_visit(vec![
             Link::from_str("https://example.com/foo"),
