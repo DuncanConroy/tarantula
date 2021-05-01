@@ -7,6 +7,8 @@ use robotparser::RobotFileParser;
 use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, get_uri_protocol, get_uri_protocol_as_str};
 use page::Page;
 use std::process;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub mod page;
 
@@ -55,7 +57,7 @@ impl RunConfig {
     }
 }
 
-pub async fn init(run_config: RunConfig) -> DynResult<(Page, Vec<String>)> {
+pub async fn init(run_config: RunConfig) -> Option<Page> {
     let uri = run_config.url.clone();
     let protocol = get_uri_protocol("", &uri);
     if let None = protocol {
@@ -67,16 +69,17 @@ pub async fn init(run_config: RunConfig) -> DynResult<(Page, Vec<String>)> {
     let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
     let page = Page::new_root(uri);
 
+    let all_known_links = Arc::new(Mutex::new(vec![]));
     let load_page_arguments = LoadPageArguments {
         host: page.get_uri().host().unwrap().into(),
         protocol: protocol_str.into(),
-        known_links: vec![],
         page,
         same_domain_only: true,
         depth: 1,
     };
 
-    recursive_load_page_and_get_links(run_config, load_page_arguments).await
+    let result = recursive_load_page_and_get_links(run_config, load_page_arguments, all_known_links.clone()).await;
+    Some(result.unwrap())
 }
 
 #[async_recursion]
@@ -157,7 +160,6 @@ struct LoadPageArguments {
     page: Page,
     protocol: String,
     host: String,
-    known_links: Vec<String>,
     same_domain_only: bool,
     depth: u8,
 }
@@ -168,23 +170,16 @@ unsafe impl Send for LoadPageArguments {}
 async fn recursive_load_page_and_get_links(
     run_config: RunConfig,
     mut load_page_arguments: LoadPageArguments,
-) -> DynResult<(Page, Vec<String>)> {
+    all_known_links: Arc<Mutex<Vec<String>>>,
+) -> DynResult<Page> {
     if load_page_arguments.depth > run_config.maximum_depth {
         println!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
-        return Ok((load_page_arguments.page, load_page_arguments.known_links));
+        return Ok(load_page_arguments.page);
     }
 
-    let mut all_known_links = load_page_arguments.known_links;
-    println!("all_known_links: {:#?}", all_known_links);
+    println!("all_known_links: {:#?}", all_known_links.lock().await);
 
-    // if all_known_links.contains(&load_page_arguments.page.link.uri) {
-    //     println!(
-    //         "Skipping already known {:?}",
-    //         &load_page_arguments.page.link
-    //     );
-    //     return Ok((load_page_arguments.page, all_known_links));
-    // }
-    all_known_links.push(load_page_arguments.page.link.uri.clone());
+    all_known_links.lock().await.push(load_page_arguments.page.link.uri.clone());
     let item_uri = uri_service::form_full_url(
         &load_page_arguments.protocol,
         &load_page_arguments.page.link.uri,
@@ -201,7 +196,7 @@ async fn recursive_load_page_and_get_links(
         links_to_visit = find_links_to_visit(
             &load_page_arguments.host,
             &load_page_arguments.protocol,
-            &all_known_links,
+            all_known_links.clone(),
             &mut load_page_arguments.page,
             item_uri,
             load_page_arguments.same_domain_only,
@@ -218,7 +213,7 @@ async fn recursive_load_page_and_get_links(
         );
     }
 
-    all_known_links.append(&mut links_to_visit.iter_mut().map(|it| it.uri.clone()).collect());
+    all_known_links.lock().await.append(&mut links_to_visit.iter_mut().map(|it| it.uri.clone()).collect());
 
     if links_to_visit.len() > 0 && load_page_arguments.page.descendants.is_none() {
         load_page_arguments.page.descendants = Some(vec![]);
@@ -226,18 +221,20 @@ async fn recursive_load_page_and_get_links(
     if let Some(mut descendants) = load_page_arguments.page.descendants {
         for element in links_to_visit {
             let current_page = Page::new_with_parent(element, load_page_arguments.page.link.uri.clone());
-            let recursion_result = recursive_load_page_and_get_links(run_config.clone(), LoadPageArguments {
-                page: current_page,
-                protocol: load_page_arguments.protocol.clone().into(),
-                host: load_page_arguments.host.clone(),
-                known_links: all_known_links.clone(),
-                same_domain_only: load_page_arguments.same_domain_only,
-                depth: load_page_arguments.depth + 1,
-            }).await;
+            let recursion_result = recursive_load_page_and_get_links(
+                run_config.clone(),
+                LoadPageArguments {
+                    page: current_page,
+                    protocol: load_page_arguments.protocol.clone().into(),
+                    host: load_page_arguments.host.clone(),
+                    same_domain_only: load_page_arguments.same_domain_only,
+                    depth: load_page_arguments.depth + 1,
+                },
+                all_known_links.clone(),
+            ).await;
 
-            if let Ok((current_page, additional_known_links)) = recursion_result {
+            if let Ok(current_page) = recursion_result {
                 descendants.push(current_page);
-                all_known_links = additional_known_links;
             }
         }
         load_page_arguments.page.descendants = Some(descendants);
@@ -247,13 +244,13 @@ async fn recursive_load_page_and_get_links(
         .page
         .response_timings
         .children_compete_time = Some(Utc::now());
-    Ok((load_page_arguments.page, all_known_links))
+    Ok(load_page_arguments.page)
 }
 
 async fn find_links_to_visit(
     source_domain: &str,
     protocol: &str,
-    all_known_links: &Vec<String>,
+    all_known_links: Arc<Mutex<Vec<String>>>,
     mut page_to_process: &mut Page,
     uri: Uri,
     same_domain_only: bool,
@@ -279,12 +276,7 @@ async fn find_links_to_visit(
         } else {
             uri_result.links
         };
-        let links_to_visit: Vec<Link> = result
-            .iter()
-            .filter(|it| !all_known_links.contains(&it.uri))
-            .map(|it| it)
-            .cloned()
-            .collect();
+        let links_to_visit = filter_links_to_visit(result, all_known_links.clone()).await;
         if !run_config.keep_html_in_memory {
             page_to_process.reset_body();
         }
@@ -321,6 +313,15 @@ fn can_crawl(user_agent: &str, item_uri: &Uri) -> bool {
     can_crawl
 }
 
+async fn filter_links_to_visit(input: Vec<Link>, known_links: Arc<Mutex<Vec<String>>>) -> Vec<Link> {
+    let known_links_unlocked = known_links.lock().await;
+    input.iter()
+        .filter(|it| !known_links_unlocked.contains(&it.uri))
+        .map(|it| it)
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use testutils::*;
@@ -349,5 +350,20 @@ mod tests {
         assert_eq!(result.len(), 8, "{:?}\n{:?}", result, sorted_expected);
         let result_strings: Vec<&String> = result.iter().map(|it| &it.uri).collect();
         assert_eq!(result_strings, sorted_expected);
+    }
+
+    #[tokio::test]
+    async fn filter_links_to_visit_filters_correctly() {
+        let known_links = Arc::new(Mutex::new(vec![
+            String::from("https://example.com/foo"),
+            String::from("https://example.com/bar"),
+        ]));
+
+        let result = filter_links_to_visit(vec![
+            Link::from_str("https://example.com/foo"),
+            Link::from_str("https://example.com/bar"),
+            Link::from_str("https://example.com/foobar")],
+                                           known_links.clone()).await;
+        assert_eq!(result, vec![Link::from_str("https://example.com/foobar")]);
     }
 }

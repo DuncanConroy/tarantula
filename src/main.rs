@@ -1,14 +1,9 @@
-use std::{process, thread};
 use std::str::FromStr;
 
 use clap::App;
 use clap::load_yaml;
-use hyper::Uri;
-use robotparser::RobotFileParser;
 
 use lib::*;
-use linkresult::{get_uri_protocol, get_uri_protocol_as_str, Link, UriScope};
-use page::*;
 use std::sync::mpsc;
 
 mod lib;
@@ -40,7 +35,7 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
     if let Some(maximum_redirects) = matches.value_of("maximum_redirects") {
         run_config.maximum_redirects = u8::from_str(&maximum_redirects).unwrap()
     }
-    if let Some(keep_html_in_memory) = matches.value_of("keep_html_in_memory") {
+    if let Some(_) = matches.value_of("keep_html_in_memory") {
         run_config.keep_html_in_memory = true
     }
 
