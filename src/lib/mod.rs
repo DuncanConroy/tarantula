@@ -181,12 +181,7 @@ async fn recursive_load_page_and_get_links(
     println!("all_known_links: {:#?}", all_known_links.lock().await);
 
     all_known_links.lock().await.insert(load_page_arguments.page.link.uri.clone());
-    let item_uri = uri_service::form_full_url(
-        &load_page_arguments.protocol,
-        &load_page_arguments.page.link.uri,
-        &load_page_arguments.host,
-        &load_page_arguments.page.parent_uri,
-    );
+    let item_uri = prepare_item_url(&load_page_arguments);
     let mut links_to_visit: Vec<Link>;
 
     if !run_config.ignore_robots_txt && !can_crawl(&run_config.user_agent, &item_uri) {
@@ -247,6 +242,15 @@ async fn recursive_load_page_and_get_links(
         .response_timings
         .children_compete_time = Some(Utc::now());
     Ok(load_page_arguments.page)
+}
+
+fn prepare_item_url(load_page_arguments: &LoadPageArguments) -> Uri {
+    uri_service::form_full_url(
+        &load_page_arguments.protocol,
+        &load_page_arguments.page.link.uri,
+        &load_page_arguments.host,
+        &load_page_arguments.page.parent_uri,
+    )
 }
 
 async fn find_links_to_visit(
