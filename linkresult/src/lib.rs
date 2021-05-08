@@ -4,6 +4,7 @@ use fancy_regex::escape;
 use fancy_regex::Regex;
 
 pub use uri_result::*;
+use std::sync::{Mutex, Arc};
 
 pub mod uri_result;
 pub mod uri_service;
@@ -20,25 +21,12 @@ enum RegexType {
     UnknownPrefix,
 }
 
-struct RegexesSingleton {
-    instance: Option<HashMap<RegexType, Regex>>,
+struct LinkTypeChecker {
+    regexes: Arc<Mutex<HashMap<RegexType, Regex>>>,
 }
 
-impl RegexesSingleton {
-    fn is_match(&self, key: RegexType, uri: &str) -> bool {
-        self.instance.as_ref().unwrap().get(&key).unwrap().is_match(uri).unwrap()
-    }
-
-    fn is_initialized(&self) -> bool {
-        return self.instance.as_ref().is_some();
-    }
-
-    fn init(&mut self, host: &str)
-    {
-        if self.is_initialized() {
-            return;
-        }
-
+impl LinkTypeChecker {
+    pub fn new(host: &str) -> LinkTypeChecker {
         let domain_regex = escape(host).replace("-", "\"");
         let mut hash_map = HashMap::with_capacity(8);
         hash_map.insert(RegexType::Anchor, Regex::new("^/?#").unwrap());
@@ -49,16 +37,17 @@ impl RegexesSingleton {
         hash_map.insert(RegexType::SameDomain, Regex::new("^(?![a-zA-Z]+://)(?:/?(?:[^#].+))$").unwrap());
         hash_map.insert(RegexType::SameDomainWithProtocol, Regex::new(&format!("^https?://{}", domain_regex).to_owned()).unwrap());
         hash_map.insert(RegexType::UnknownPrefix, Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap());
-        self.instance.replace(hash_map);
+
+        LinkTypeChecker {
+            regexes: Arc::new(Mutex::new(hash_map))
+        }
     }
-}
 
-static mut REGEXES: RegexesSingleton = RegexesSingleton { instance: None };
+    fn is_match(&self, key: RegexType, uri: &str) -> bool {
+        self.regexes.lock().unwrap().get(&key).unwrap().is_match(uri).unwrap()
+    }
 
-pub fn get_uri_scope(host: &str, uri: &str) -> Option<UriScope> {
-    unsafe {
-        REGEXES.init(host);
-
+    pub fn get_uri_scope(&self, host: &str, uri: &str) -> Option<UriScope> {
         match uri {
             uri if uri.eq("/") => Some(UriScope::Root),
             uri if uri.eq(host) => Some(UriScope::Root),
@@ -70,38 +59,52 @@ pub fn get_uri_scope(host: &str, uri: &str) -> Option<UriScope> {
             uri if uri.starts_with("mailto:") => Some(UriScope::Mailto),
             uri if uri.starts_with("data:image/") => Some(UriScope::EmbeddedImage),
             uri if uri.starts_with("javascript:") => Some(UriScope::Code),
-            uri if REGEXES.is_match(RegexType::UnknownPrefix, uri) => { Some(UriScope::UnknownPrefix) }
-            uri if REGEXES.is_match(RegexType::Anchor, uri) => Some(UriScope::Anchor),
-            uri if REGEXES.is_match(RegexType::DifferentSubdomain, uri) => { Some(UriScope::DifferentSubDomain) }
-            uri if REGEXES.is_match(RegexType::EXTERNAL, uri) => { Some(UriScope::External) }
-            uri if REGEXES.is_match(RegexType::SameDomain, uri) => { Some(UriScope::SameDomain) }
-            uri if REGEXES.is_match(RegexType::SameDomainWithProtocol, uri) => { Some(UriScope::SameDomain) }
-            uri if REGEXES.is_match(RegexType::DifferentSubdomainWithProtocol, uri) => { Some(UriScope::DifferentSubDomain) }
-            uri if REGEXES.is_match(RegexType::ExternalWithProtocol, uri) => { Some(UriScope::External) }
+            uri if self.is_match(RegexType::UnknownPrefix, uri) => { Some(UriScope::UnknownPrefix) }
+            uri if self.is_match(RegexType::Anchor, uri) => Some(UriScope::Anchor),
+            uri if self.is_match(RegexType::DifferentSubdomain, uri) => { Some(UriScope::DifferentSubDomain) }
+            uri if self.is_match(RegexType::EXTERNAL, uri) => { Some(UriScope::External) }
+            uri if self.is_match(RegexType::SameDomain, uri) => { Some(UriScope::SameDomain) }
+            uri if self.is_match(RegexType::SameDomainWithProtocol, uri) => { Some(UriScope::SameDomain) }
+            uri if self.is_match(RegexType::DifferentSubdomainWithProtocol, uri) => { Some(UriScope::DifferentSubDomain) }
+            uri if self.is_match(RegexType::ExternalWithProtocol, uri) => { Some(UriScope::External) }
             _ => None,
+        }
+    }
+
+    pub fn get_uri_protocol(&self, parent_protocol: &str, uri: &str) -> Option<UriProtocol> {
+        match uri {
+            uri if uri.starts_with("https") => Some(UriProtocol::HTTPS),
+            uri if uri.starts_with("http") => Some(UriProtocol::HTTP),
+            uri if uri.starts_with("data:") => None,
+            uri if uri.starts_with("mailto:") => None,
+            uri if self.is_match(RegexType::UnknownPrefix, uri) => None,
+            uri if uri.eq("") => None,
+            uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
+            _ => get_uri_protocol("", parent_protocol),
+        }
+    }
+
+    pub fn get_uri_protocol_as_str(protocol: &UriProtocol) -> &str {
+        match protocol {
+            UriProtocol::HTTP => "http",
+            UriProtocol::HTTPS => "https",
+            _ => "https",
         }
     }
 }
 
 pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol> {
-    match uri {
-        uri if uri.starts_with("https") => Some(UriProtocol::HTTPS),
-        uri if uri.starts_with("http") => Some(UriProtocol::HTTP),
-        uri if uri.starts_with("data:") => None,
-        uri if uri.starts_with("mailto:") => None,
-        uri if unsafe { REGEXES.is_initialized() && REGEXES.is_match(RegexType::UnknownPrefix, uri) || Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap().is_match(uri).unwrap() } => None,
-        uri if uri.eq("") => None,
-        uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
-        _ => get_uri_protocol("", parent_protocol),
-    }
+    let instance = LinkTypeChecker::new("");
+    instance.get_uri_protocol(parent_protocol, uri)
+}
+
+pub fn get_uri_scope(host: &str, uri: &str) -> Option<UriScope> {
+    let instance = LinkTypeChecker::new(host);
+    instance.get_uri_scope(host, uri)
 }
 
 pub fn get_uri_protocol_as_str(protocol: &UriProtocol) -> &str {
-    match protocol {
-        UriProtocol::HTTP => "http",
-        UriProtocol::HTTPS => "https",
-        _ => "https",
-    }
+    LinkTypeChecker::get_uri_protocol_as_str(protocol)
 }
 
 #[cfg(test)]
@@ -161,9 +164,11 @@ mod tests {
             ("", None),
         ];
 
+        let instance = LinkTypeChecker::new("example.com");
+
         input_to_output
             .iter()
-            .map(|it| (&it.0, &it.1, get_uri_scope("example.com", it.0)))
+            .map(|it| (&it.0, &it.1, instance.get_uri_scope("example.com", it.0)))
             .for_each(|it|
                 assert_eq!(
                     it.1, &it.2,
@@ -197,9 +202,11 @@ mod tests {
             "https://www.a-b-c.com",
         ];
 
+        let instance = LinkTypeChecker::new("example.com");
+
         input_to_output
             .iter()
-            .map(|it| (it, get_uri_scope(it, "example.com")))
+            .map(|it| (it, instance.get_uri_scope(it, "example.com")))
             .for_each(|it| {
                 assert_eq!(
                     it.1,
@@ -249,6 +256,8 @@ mod tests {
             ("https", "//example.com", Some(UriProtocol::IMPLICIT)),
             ("http", "//example.com", Some(UriProtocol::IMPLICIT)),
         ];
+
+        let instance = LinkTypeChecker::new("example.com");
 
         input_to_output
             .iter()
