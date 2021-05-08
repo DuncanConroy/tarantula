@@ -7,9 +7,11 @@ use robotparser::RobotFileParser;
 use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, LinkTypeChecker};
 use page::Page;
 use std::process;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
+use dom_parser::DomParser;
+use std::ops::Deref;
+use tokio::sync::Mutex as TokioMutex;
 
 pub mod page;
 
@@ -60,16 +62,20 @@ impl RunConfig {
 
 struct AppContext<'a> {
     root_uri: &'a str,
-    link_type_checker: LinkTypeChecker,
+    link_type_checker: Arc<Mutex<LinkTypeChecker>>,
+    dom_parser: DomParser,
 }
 
 impl AppContext<'_> {
     pub fn new(uri: &str) -> AppContext{
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let host = hyper_uri.host().unwrap();
+        let link_type_checker= Arc::new(Mutex::new(LinkTypeChecker::new(host)));
+        let dom_parser = DomParser::new(link_type_checker.clone());
         AppContext{
             root_uri: uri,
-            link_type_checker: LinkTypeChecker::new(host),
+            link_type_checker,
+            dom_parser,
         }
     }
 }
@@ -77,7 +83,7 @@ impl AppContext<'_> {
 pub async fn init(run_config: RunConfig) -> Option<Page> {
     let uri = run_config.url.clone();
     let app_context = AppContext::new(&uri);
-    let protocol = app_context.link_type_checker.get_uri_protocol("", &uri);
+    let protocol = app_context.link_type_checker.lock().unwrap().get_uri_protocol("", &uri);
     if let None = protocol {
         eprintln!("Invalid protocol {:?} in uri {}", protocol, uri);
         process::exit(1)
@@ -85,9 +91,9 @@ pub async fn init(run_config: RunConfig) -> Option<Page> {
 
     let protocol_unwrapped = protocol.clone().unwrap();
     let protocol_str = LinkTypeChecker::get_uri_protocol_as_str(&protocol_unwrapped);
-    let page = Page::new_root(uri, protocol);
+    let page = Page::new_root(uri.clone(), protocol);
 
-    let all_known_links = Arc::new(Mutex::new(HashSet::new()));
+    let all_known_links = Arc::new(TokioMutex::new(HashSet::new()));
     let load_page_arguments = LoadPageArguments {
         host: page.get_uri().host().unwrap().into(),
         protocol: protocol_str.into(),
@@ -96,7 +102,7 @@ pub async fn init(run_config: RunConfig) -> Option<Page> {
         depth: 1,
     };
 
-    let result = recursive_load_page_and_get_links(run_config, load_page_arguments, all_known_links.clone()).await;
+    let result = recursive_load_page_and_get_links(run_config, load_page_arguments, all_known_links.clone(), &app_context).await;
     Some(result.unwrap())
 }
 
@@ -188,7 +194,8 @@ unsafe impl Send for LoadPageArguments {}
 async fn recursive_load_page_and_get_links(
     run_config: RunConfig,
     mut load_page_arguments: LoadPageArguments,
-    all_known_links: Arc<Mutex<HashSet<String>>>,
+    all_known_links: Arc<TokioMutex<HashSet<String>>>,
+    app_context:&AppContext,
 ) -> DynResult<Page> {
     if load_page_arguments.depth > run_config.maximum_depth {
         println!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
@@ -215,6 +222,7 @@ async fn recursive_load_page_and_get_links(
             load_page_arguments.same_domain_only,
             &run_config,
             &load_page_arguments.host,
+            app_context,
         )
             .await
             .unwrap();
@@ -245,6 +253,7 @@ async fn recursive_load_page_and_get_links(
                     depth: load_page_arguments.depth + 1,
                 },
                 all_known_links.clone(),
+                app_context,
             ).await;
 
             if let Ok(current_page) = recursion_result {
@@ -273,12 +282,13 @@ fn prepare_item_url(load_page_arguments: &LoadPageArguments) -> Uri {
 async fn find_links_to_visit(
     source_domain: &str,
     protocol: &str,
-    all_known_links: Arc<Mutex<HashSet<String>>>,
+    all_known_links: Arc<TokioMutex<HashSet<String>>>,
     mut page_to_process: &mut Page,
     uri: Uri,
     same_domain_only: bool,
     run_config: &RunConfig,
     host: &str,
+    app_context: &AppContext<'_>,
 ) -> DynResult<Vec<Link>> {
     if let Ok(()) = fetch_page(page_to_process, uri, run_config, String::from(host), String::from(protocol)).await {
         let item_body = page_to_process.get_body().as_ref().unwrap().clone();
@@ -289,7 +299,7 @@ async fn find_links_to_visit(
         }
 
         let uri_result: UriResult =
-            dom_parser::get_links(&protocol, source_domain, item_body).unwrap();
+            app_context.dom_parser.get_links(&protocol, source_domain, item_body).unwrap();
         page_to_process.response_timings.parse_complete_time = Some(uri_result.parse_complete_time);
 
         let result: Vec<Link> = if same_domain_only {
@@ -336,7 +346,7 @@ fn can_crawl(user_agent: &str, item_uri: &Uri) -> bool {
     can_crawl
 }
 
-async fn filter_links_to_visit(input: Vec<Link>, known_links: Arc<Mutex<HashSet<String>>>) -> Vec<Link> {
+async fn filter_links_to_visit(input: Vec<Link>, known_links: Arc<TokioMutex<HashSet<String>>>) -> Vec<Link> {
     let known_links_unlocked = known_links.lock().await;
     input.iter()
         .filter(|it| !known_links_unlocked.contains(&it.uri))
@@ -380,7 +390,7 @@ mod tests {
         let mut links = HashSet::new();
         links.insert(String::from("https://example.com/foo"));
         links.insert(String::from("https://example.com/bar"));
-        let known_links = Arc::new(Mutex::new(links));
+        let known_links = Arc::new(TokioMutex::new(links));
 
         let result = filter_links_to_visit(vec![
             Link::from_str("https://example.com/foo"),
