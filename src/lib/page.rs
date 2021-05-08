@@ -1,6 +1,6 @@
 use hyper::{Body, HeaderMap, Response, StatusCode, Uri, Version};
 
-use linkresult::{Link, ResponseTimings UriScope, UriProtocol};
+use linkresult::{Link, ResponseTimings, UriScope, UriProtocol};
 
 #[derive(Debug, Clone)]
 pub struct PageResponse {

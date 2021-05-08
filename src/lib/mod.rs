@@ -4,7 +4,7 @@ use hyper::{Body, Client, header, Request, Response, Uri};
 use hyper_tls::HttpsConnector;
 use robotparser::RobotFileParser;
 
-use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, get_uri_protocol, get_uri_protocol_as_str};
+use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, LinkTypeChecker};
 use page::Page;
 use std::process;
 use std::sync::Arc;
@@ -63,29 +63,29 @@ struct AppContext<'a> {
     link_type_checker: LinkTypeChecker,
 }
 
-impl AppContext {
+impl AppContext<'_> {
     pub fn new(uri: &str) -> AppContext{
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let host = hyper_uri.host().unwrap();
         AppContext{
             root_uri: uri,
-            link_type_checker: linkresult::init(host),
+            link_type_checker: LinkTypeChecker::new(host),
         }
     }
 }
 
 pub async fn init(run_config: RunConfig) -> Option<Page> {
     let uri = run_config.url.clone();
-    let protocol = get_uri_protocol("", &uri);
+    let app_context = AppContext::new(&uri);
+    let protocol = app_context.link_type_checker.get_uri_protocol("", &uri);
     if let None = protocol {
         eprintln!("Invalid protocol {:?} in uri {}", protocol, uri);
         process::exit(1)
     }
 
-    let app_ontext = AppContext::new(&uri);
-    let page = Page::new_root(uri, protocol);
     let protocol_unwrapped = protocol.clone().unwrap();
-    let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
+    let protocol_str = LinkTypeChecker::get_uri_protocol_as_str(&protocol_unwrapped);
+    let page = Page::new_root(uri, protocol);
 
     let all_known_links = Arc::new(Mutex::new(HashSet::new()));
     let load_page_arguments = LoadPageArguments {

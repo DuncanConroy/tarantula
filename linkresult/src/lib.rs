@@ -80,7 +80,7 @@ impl LinkTypeChecker {
             uri if self.is_match(RegexType::UnknownPrefix, uri) => None,
             uri if uri.eq("") => None,
             uri if uri.starts_with("//") => Some(UriProtocol::IMPLICIT),
-            _ => get_uri_protocol("", parent_protocol),
+            _ => self.get_uri_protocol("", parent_protocol),
         }
     }
 
@@ -93,10 +93,6 @@ impl LinkTypeChecker {
     }
 }
 
-pub fn init(host:&str)->LinkTypeChecker{
-    LinkTypeChecker::new(host)
-}
-
 pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol> {
     let instance = LinkTypeChecker::new("");
     instance.get_uri_protocol(parent_protocol, uri)
@@ -105,10 +101,6 @@ pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol>
 pub fn get_uri_scope(host: &str, uri: &str) -> Option<UriScope> {
     let instance = LinkTypeChecker::new(host);
     instance.get_uri_scope(host, uri)
-}
-
-pub fn get_uri_protocol_as_str(protocol: &UriProtocol) -> &str {
-    LinkTypeChecker::get_uri_protocol_as_str(protocol)
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 use hyper::Uri;
 
-use crate::{get_uri_protocol, get_uri_scope, UriProtocol, UriScope, LinkTypeChecker};
+use crate::{UriProtocol, UriScope, LinkTypeChecker};
 
-struct UriService {
+pub struct UriService {
     link_type_checker: LinkTypeChecker,
 }
 
@@ -21,13 +21,13 @@ impl UriService {
             let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
             to_uri(&create_uri_string(protocol, host, &adjusted_uri))
         };
-        if let Some(scope) = get_uri_scope(host, uri) {
+        if let Some(scope) = self.link_type_checker.get_uri_scope(host, uri) {
             return match scope {
                 UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
                 UriScope::SameDomain => do_normalize(uri, parent_uri),
                 UriScope::Anchor =>  do_normalize(uri, parent_uri),
                 _ => {
-                    if let Some(uri_protocol) = get_uri_protocol(protocol, uri) {
+                    if let Some(uri_protocol) = self.link_type_checker.get_uri_protocol(protocol, uri) {
                         if uri_protocol == UriProtocol::IMPLICIT {
                             return format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap();
                         }
@@ -83,11 +83,6 @@ fn normalize_url(uri: String, parent_uri: &Option<String>) -> String {
     }
 
     parts_out.join("/")
-}
-
-pub fn create_uri(protocol: &str, host: &str, link: &String) -> Uri {
-    let uri_string = create_uri_string(protocol, host, &link);
-    uri_string.parse::<hyper::Uri>().unwrap()
 }
 
 #[cfg(test)]
