@@ -1,10 +1,10 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use fancy_regex::escape;
 use fancy_regex::Regex;
 
 pub use uri_result::*;
-use std::sync::{Mutex, Arc};
 
 pub mod uri_result;
 pub mod uri_service;
@@ -43,6 +43,7 @@ impl LinkTypeChecker {
         }
     }
 
+    #[inline(always)]
     fn is_match(&self, key: RegexType, uri: &str) -> bool {
         self.regexes.lock().unwrap().get(&key).unwrap().is_match(uri).unwrap()
     }

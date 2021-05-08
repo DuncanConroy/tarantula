@@ -1,7 +1,8 @@
+use std::sync::{Arc, Mutex};
+
 use hyper::Uri;
 
-use crate::{UriProtocol, UriScope, LinkTypeChecker};
-use std::sync::{Mutex, Arc};
+use crate::{LinkTypeChecker, UriProtocol, UriScope};
 
 pub struct UriService {
     link_type_checker: Arc<Mutex<LinkTypeChecker>>,
@@ -16,17 +17,18 @@ impl UriService {
         println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
         let to_uri = |input: &str| String::from(input).parse::<hyper::Uri>().unwrap();
         let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
-            let sanitized_uri = normalize_url(uri.into(), parent_uri);
-            let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
+            let normalized_uri = normalize_url(uri.into(), parent_uri);
+            let adjusted_uri = prefix_uri_with_forward_slash(&normalized_uri);
             to_uri(&create_uri_string(protocol, host, &adjusted_uri))
         };
-        if let Some(scope) = self.link_type_checker.lock().unwrap().get_uri_scope(host, uri) {
+        let link_type_checker = self.link_type_checker.lock().unwrap();
+        if let Some(scope) = link_type_checker.get_uri_scope(host, uri) {
             return match scope {
                 UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
                 UriScope::SameDomain => do_normalize(uri, parent_uri),
                 UriScope::Anchor => do_normalize(uri, parent_uri),
                 _ => {
-                    if let Some(uri_protocol) = self.link_type_checker.lock().unwrap().get_uri_protocol(protocol, uri) {
+                    if let Some(uri_protocol) = link_type_checker.get_uri_protocol(protocol, uri) {
                         if uri_protocol == UriProtocol::IMPLICIT {
                             return format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap();
                         }
@@ -81,8 +83,9 @@ fn normalize_url(uri: String, parent_uri: &Option<String>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ops::Add;
+
+    use super::*;
 
     #[test]
     fn form_full_url_returns_correct_uri() {
@@ -105,13 +108,13 @@ mod tests {
         ];
 
         let host = "example.com";
-        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new("example.com")));
-        let instance = UriService::new(link_type_checker);
+        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(host)));
+        let instance = UriService::new(link_type_checker.clone());
         input.iter()
             .for_each(|(uri, expected)| {
                 let result = instance.form_full_url("https", uri, host, &Some(String::from("")));
                 let formatted = format!("{}{}", host, uri);
-                let scope = instance.link_type_checker.get_uri_scope(host, &formatted);
+                let scope = link_type_checker.lock().unwrap().get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
             });
     }
@@ -124,12 +127,12 @@ mod tests {
 
         let host = "example.com";
         let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(host)));
-        let instance = UriService::new(link_type_checker);
+        let instance = UriService::new(link_type_checker.clone());
         input.iter()
             .for_each(|(parent_uri, uri, expected)| {
                 let result = instance.form_full_url("https", uri, host, &Some(String::from("").add(parent_uri)));
                 let formatted = format!("{}{}", host, uri);
-                let scope = instance.link_type_checker.get_uri_scope(host, &formatted);
+                let scope = link_type_checker.lock().unwrap().get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
             });
     }

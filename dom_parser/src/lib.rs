@@ -1,9 +1,10 @@
+use std::sync::{Arc, Mutex};
+
 use chrono::Utc;
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{Link, UriResult, LinkTypeChecker};
-use std::sync::{Mutex, Arc};
+use linkresult::{Link, LinkTypeChecker, UriResult};
 
 pub struct DomParser {
     link_type_checker: Arc<Mutex<LinkTypeChecker>>,
@@ -36,13 +37,13 @@ impl DomParser {
         node: Tree<Node>,
     ) -> Vec<Link> {
         let link_attribute_identifiers = vec!["href", "src", "data-src"];
+        let link_type_checker = self.link_type_checker.lock().unwrap();
         node.values()
             .filter_map(|current_node| {
                 let (_, link) = current_node
                     .as_element()?
                     .attrs()
                     .find(|attribute| link_attribute_identifiers.contains(&attribute.0))?;
-                let link_type_checker = self.link_type_checker.lock().unwrap();
                 Some(Link {
                     uri: link.trim().to_string(),
                     scope: link_type_checker.get_uri_scope(&host, &link),
@@ -71,8 +72,10 @@ mod tests {
         d.push("resources/test/example.com.html");
         let html_file = read_to_string(&d).unwrap();
 
+        let host = "www.example.com";
+        let instance = DomParser::new(Arc::new(Mutex::new(LinkTypeChecker::new(host))));
         let input = Html::parse_document(html_file.as_str());
-        let result = extract_links("https", "www.example.com", input.tree);
+        let result = instance.extract_links("https", host, input.tree);
         assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79
     }
 }
