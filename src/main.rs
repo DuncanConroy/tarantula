@@ -1,16 +1,21 @@
 use std::str::FromStr;
+use std::sync::mpsc;
 
 use clap::App;
 use clap::load_yaml;
+use log::{info, trace};
+use log4rs;
 
 use lib::*;
-use std::sync::mpsc;
 
 mod lib;
 
 #[tokio::main]
 async fn main() -> DynResult<()> {
-    pretty_env_logger::init();
+    log4rs::init_file("config/log4rs.yaml", Default::default()).unwrap();
+    // pretty_env_logger::init();
+    info!("Starting tarantula");
+
     // todo: restructure memory layout to use a centralized list of strings/uris, e.g. like string table in AVM
     // todo: cleanup memory consumption
     // todo: stream results to WHERE? :D
@@ -39,7 +44,7 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
         run_config.keep_html_in_memory = true
     }
 
-    println!("{:#?}", run_config);
+    info!("RunConfig: {:#?}", run_config);
 
     Ok(run_config)
 }
@@ -54,6 +59,6 @@ async fn process() {
 
     let page = rx.recv().unwrap();
 
-    println!("Finished.");
-    println!("Tarantula result:\n{:?}", page.unwrap())
+    info!("Finished.");
+    trace!("Tarantula result:\n{:?}", page.unwrap())
 }

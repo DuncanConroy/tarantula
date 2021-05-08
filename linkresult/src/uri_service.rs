@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use hyper::Uri;
+use log::trace;
 
 use crate::{LinkTypeChecker, UriProtocol, UriScope};
 
@@ -14,7 +15,7 @@ impl UriService {
     }
 
     pub fn form_full_url(&self, protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
-        println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
+        trace!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
         let to_uri = |input: &str| String::from(input).parse::<hyper::Uri>().unwrap();
         let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
             let normalized_uri = normalize_url(uri.into(), parent_uri);
@@ -57,25 +58,25 @@ fn create_uri_string(protocol: &str, host: &str, link: &str) -> String {
 }
 
 fn normalize_url(uri: String, parent_uri: &Option<String>) -> String {
-    println!("normalize uri: {}", uri);
+    trace!("normalize uri: {}", uri);
     if !uri.contains("../") {
         return uri;
     }
 
     let absolute_uri = format!("{}{}", parent_uri.as_ref().unwrap(), uri);
-    println!("absolute: {}", absolute_uri);
+    trace!("absolute: {}", absolute_uri);
 
     let parts = absolute_uri.split("/");
     let mut parts_out = vec![];
 
-    println!("parts: {:?}", parts);
+    trace!("parts: {:?}", parts);
     for current in parts {
         if current != ".." {
             parts_out.push(current);
         } else {
             parts_out.pop();
         }
-        println!("parts_out: {:?}", parts_out);
+        trace!("parts_out: {:?}", parts_out);
     }
 
     parts_out.join("/")

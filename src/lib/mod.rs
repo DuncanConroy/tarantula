@@ -1,18 +1,20 @@
+use std::collections::HashSet;
+use std::ops::Deref;
+use std::process;
+use std::sync::{Arc, Mutex};
+
 use async_recursion::async_recursion;
 use chrono::Utc;
 use hyper::{Body, Client, header, Request, Response, Uri};
 use hyper_tls::HttpsConnector;
+use log::{debug, error, info, trace, warn};
 use robotparser::RobotFileParser;
-
-use linkresult::{Link, uri_result, uri_service, UriResult, LinkTypeChecker};
-use page::Page;
-use std::process;
-use std::sync::{Arc, Mutex};
-use std::collections::HashSet;
-use dom_parser::DomParser;
-use std::ops::Deref;
 use tokio::sync::Mutex as TokioMutex;
+
+use dom_parser::DomParser;
+use linkresult::{Link, LinkTypeChecker, uri_result, uri_service, UriResult};
 use linkresult::uri_service::UriService;
+use page::Page;
 
 pub mod page;
 
@@ -89,7 +91,7 @@ pub async fn init(run_config: RunConfig) -> Option<Page> {
     let app_context = AppContext::new(&uri);
     let protocol = app_context.link_type_checker.lock().unwrap().get_uri_protocol("", &uri);
     if let None = protocol {
-        eprintln!("Invalid protocol {:?} in uri {}", protocol, uri);
+        error!("Invalid protocol {:?} in uri {}", protocol, uri);
         process::exit(1)
     }
 
@@ -125,15 +127,15 @@ async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maxi
         Ok((uri, client.request(req).await.unwrap()))
     } else {
         let response = client.request(req).await.unwrap();
-        println!("HEAD for {}: {:?}", uri, response.headers());
+        trace!("HEAD for {}: {:?}", uri, response.headers());
         if current_redirect < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
                 let adjusted_uri = uri_service.form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap(), parent_uri);
-                println!("Following redirect {}", adjusted_uri);
+                debug!("Following redirect {}", adjusted_uri);
                 let response = fetch_head(adjusted_uri, ignore_redirects, current_redirect + 1, maximum_redirects, parent_uri, uri_service).await;
                 return response;
             }
-            println!("No valid location found in redirect header {:?}", response);
+            info!("No valid location found in redirect header {:?}", response);
         }
         Ok((uri, response))
     }
@@ -141,9 +143,9 @@ async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maxi
 
 async fn fetch_page(mut page: &mut Page, uri: Uri, run_config: &RunConfig, host: String, protocol: String, uri_service: &UriService) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
-    println!("URI: {}", page.link.uri);
+    debug!("URI: {}", page.link.uri);
     let adjusted_uri = uri_service.form_full_url(&protocol, uri.path(), &host, &page.parent_uri);
-    println!("Adjusted URI: {}", adjusted_uri);
+    trace!("Adjusted URI: {}", adjusted_uri);
 
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
@@ -202,11 +204,11 @@ async fn recursive_load_page_and_get_links(
     app_context: &AppContext,
 ) -> DynResult<Page> {
     if load_page_arguments.depth > run_config.maximum_depth {
-        println!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
+        info!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
         return Ok(load_page_arguments.page);
     }
 
-    println!("all_known_links: {:#?}", all_known_links.lock().await);
+    trace!("all_known_links: {:#?}", all_known_links.lock().await);
 
     all_known_links.lock().await.insert(load_page_arguments.page.link.uri.clone());
     let item_uri = prepare_item_url(&load_page_arguments, &app_context.uri_service);
@@ -214,9 +216,9 @@ async fn recursive_load_page_and_get_links(
 
     if !run_config.ignore_robots_txt && !can_crawl(&run_config.user_agent, &item_uri) {
         links_to_visit = vec![];
-        println!("Skipping {} due to robots.txt.", item_uri.to_string());
+        info!("Skipping {} due to robots.txt.", item_uri.to_string());
     } else {
-        println!("trying {}", item_uri);
+        info!("trying {}", item_uri);
         links_to_visit = find_links_to_visit(
             &load_page_arguments.host,
             &load_page_arguments.protocol,
@@ -231,7 +233,7 @@ async fn recursive_load_page_and_get_links(
             .await
             .unwrap();
 
-        println!(
+        debug!(
             ">>found {} links to visit: {:?}",
             links_to_visit.len(),
             links_to_visit
@@ -298,7 +300,7 @@ async fn find_links_to_visit(
         let item_body = page_to_process.get_body().as_ref().unwrap().clone();
         page_to_process.response_timings.overall_complete_time = Some(Utc::now());
         if item_body.is_empty() {
-            println!("No body found, no HTML to parse -> skipping");
+            warn!("No body found, no HTML to parse -> skipping");
             return Ok(Vec::<Link>::new());
         }
 
@@ -308,7 +310,7 @@ async fn find_links_to_visit(
 
         let result: Vec<Link> = if same_domain_only {
             let links_this_domain = get_same_domain_links(source_domain, &uri_result.links, app_context.link_type_checker.clone());
-            println!("Links on this domain: {}", links_this_domain.len());
+            info!("Links on this domain: {}", links_this_domain.len());
             links_this_domain
         } else {
             uri_result.links
@@ -344,7 +346,7 @@ fn can_crawl(user_agent: &str, item_uri: &Uri) -> bool {
     let mut can_crawl: bool = false;
     unsafe {
         can_crawl = ROBOTS_TXT.can_fetch(&user_agent, &item_uri);
-        println!("Can crawl {}: {}", item_uri.to_string(), can_crawl);
+        debug!("Can crawl {}: {}", item_uri.to_string(), can_crawl);
     }
 
     can_crawl

@@ -1,6 +1,7 @@
 use hyper::{Body, HeaderMap, Response, StatusCode, Uri, Version};
+use log::debug;
 
-use linkresult::{Link, ResponseTimings, UriScope, UriProtocol};
+use linkresult::{Link, ResponseTimings, UriProtocol, UriScope};
 
 #[derive(Debug, Clone)]
 pub struct PageResponse {
@@ -79,7 +80,7 @@ impl Page {
     }
 
     pub fn get_content_type(&self) -> Option<&str> {
-        println!("{:?}", self.page_response);
+        debug!("{:?}", self.page_response);
         if let Some(content_type) = self.page_response.as_ref()?.headers.get("content-type") {
             if let Ok(str) = content_type.to_str() {
                 return Some(str);
@@ -104,7 +105,7 @@ impl Page {
 
     pub fn get_protocol(&self) -> String {
         let uri = self.get_uri();
-        println!("get protocol: {}", uri);
+        debug!("get protocol: {}", uri);
         uri.scheme_str().unwrap().to_owned()
     }
 

@@ -43,7 +43,6 @@ impl LinkTypeChecker {
         }
     }
 
-    #[inline(always)]
     fn is_match(&self, key: RegexType, uri: &str) -> bool {
         self.regexes.lock().unwrap().get(&key).unwrap().is_match(uri).unwrap()
     }
