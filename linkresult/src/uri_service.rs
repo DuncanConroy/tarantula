@@ -1,33 +1,32 @@
 use hyper::Uri;
 
 use crate::{UriProtocol, UriScope, LinkTypeChecker};
+use std::sync::{Mutex, Arc};
 
 pub struct UriService {
-    link_type_checker: LinkTypeChecker,
+    link_type_checker: Arc<Mutex<LinkTypeChecker>>,
 }
 
 impl UriService {
-    fn new(host: &str) -> UriService {
-        UriService {
-            link_type_checker: LinkTypeChecker::new(host),
-        }
+    pub fn new(link_type_checker: Arc<Mutex<LinkTypeChecker>>) -> UriService {
+        UriService { link_type_checker }
     }
 
     pub fn form_full_url(&self, protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
         println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
-        let to_uri = |input:&str| String::from(input).parse::<hyper::Uri>().unwrap();
+        let to_uri = |input: &str| String::from(input).parse::<hyper::Uri>().unwrap();
         let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
             let sanitized_uri = normalize_url(uri.into(), parent_uri);
             let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
             to_uri(&create_uri_string(protocol, host, &adjusted_uri))
         };
-        if let Some(scope) = self.link_type_checker.get_uri_scope(host, uri) {
+        if let Some(scope) = self.link_type_checker.lock().unwrap().get_uri_scope(host, uri) {
             return match scope {
                 UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
                 UriScope::SameDomain => do_normalize(uri, parent_uri),
-                UriScope::Anchor =>  do_normalize(uri, parent_uri),
+                UriScope::Anchor => do_normalize(uri, parent_uri),
                 _ => {
-                    if let Some(uri_protocol) = self.link_type_checker.get_uri_protocol(protocol, uri) {
+                    if let Some(uri_protocol) = self.link_type_checker.lock().unwrap().get_uri_protocol(protocol, uri) {
                         if uri_protocol == UriProtocol::IMPLICIT {
                             return format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap();
                         }
@@ -38,11 +37,6 @@ impl UriService {
         }
         to_uri(uri)
     }
-}
-
-pub fn form_full_url(protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
-    let instance = UriService::new(host);
-    instance.form_full_url(protocol, uri, host, parent_uri)
 }
 
 fn prefix_uri_with_forward_slash(uri: &str) -> String {
