@@ -58,6 +58,22 @@ impl RunConfig {
     }
 }
 
+struct AppContext<'a> {
+    root_uri: &'a str,
+    link_type_checker: LinkTypeChecker,
+}
+
+impl AppContext {
+    pub fn new(uri: &str) -> AppContext{
+        let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
+        let host = hyper_uri.host().unwrap();
+        AppContext{
+            root_uri: uri,
+            link_type_checker: linkresult::init(host),
+        }
+    }
+}
+
 pub async fn init(run_config: RunConfig) -> Option<Page> {
     let uri = run_config.url.clone();
     let protocol = get_uri_protocol("", &uri);
@@ -66,9 +82,10 @@ pub async fn init(run_config: RunConfig) -> Option<Page> {
         process::exit(1)
     }
 
+    let app_ontext = AppContext::new(&uri);
+    let page = Page::new_root(uri, protocol);
     let protocol_unwrapped = protocol.clone().unwrap();
     let protocol_str = get_uri_protocol_as_str(&protocol_unwrapped);
-    let page = Page::new_root(uri);
 
     let all_known_links = Arc::new(Mutex::new(HashSet::new()));
     let load_page_arguments = LoadPageArguments {

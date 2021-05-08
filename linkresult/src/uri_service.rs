@@ -1,31 +1,48 @@
 use hyper::Uri;
 
-use crate::{get_uri_protocol, get_uri_scope, UriProtocol, UriScope};
+use crate::{get_uri_protocol, get_uri_scope, UriProtocol, UriScope, LinkTypeChecker};
+
+struct UriService {
+    link_type_checker: LinkTypeChecker,
+}
+
+impl UriService {
+    fn new(host: &str) -> UriService {
+        UriService {
+            link_type_checker: LinkTypeChecker::new(host),
+        }
+    }
+
+    pub fn form_full_url(&self, protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
+        println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
+        let to_uri = |input:&str| String::from(input).parse::<hyper::Uri>().unwrap();
+        let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
+            let sanitized_uri = normalize_url(uri.into(), parent_uri);
+            let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
+            to_uri(&create_uri_string(protocol, host, &adjusted_uri))
+        };
+        if let Some(scope) = get_uri_scope(host, uri) {
+            return match scope {
+                UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
+                UriScope::SameDomain => do_normalize(uri, parent_uri),
+                UriScope::Anchor =>  do_normalize(uri, parent_uri),
+                _ => {
+                    if let Some(uri_protocol) = get_uri_protocol(protocol, uri) {
+                        if uri_protocol == UriProtocol::IMPLICIT {
+                            return format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap();
+                        }
+                    }
+                    to_uri(uri)
+                }
+            };
+        }
+        to_uri(uri)
+    }
+}
 
 pub fn form_full_url(protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
-    println!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
-    let to_uri = |input:&str| String::from(input).parse::<hyper::Uri>().unwrap();
-    let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
-        let sanitized_uri = sanitize_url(uri.into(), parent_uri);
-        let adjusted_uri = prefix_uri_with_forward_slash(&sanitized_uri);
-        to_uri(&create_uri_string(protocol, host, &adjusted_uri))
-    };
-    if let Some(scope) = get_uri_scope(host, uri) {
-        return match scope {
-            UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
-            UriScope::SameDomain => do_normalize(uri, parent_uri),
-            UriScope::Anchor =>  do_normalize(uri, parent_uri),
-            _ => {
-                if let Some(uri_protocol) = get_uri_protocol(protocol, uri) {
-                    if uri_protocol == UriProtocol::IMPLICIT {
-                        return format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap();
-                    }
-                }
-                to_uri(uri)
-            }
-        };
-    }
-    to_uri(uri)
+    let instance = UriService::new(host);
+    instance.form_full_url(protocol, uri, host, parent_uri)
 }
 
 fn prefix_uri_with_forward_slash(uri: &str) -> String {
@@ -43,7 +60,7 @@ fn create_uri_string(protocol: &str, host: &str, link: &str) -> String {
     url_string
 }
 
-fn sanitize_url(uri: String, parent_uri: &Option<String>) -> String {
+fn normalize_url(uri: String, parent_uri: &Option<String>) -> String {
     println!("normalize uri: {}", uri);
     if !uri.contains("../") {
         return uri;
@@ -99,11 +116,12 @@ mod tests {
         ];
 
         let host = "example.com";
+        let instance = UriService::new(host);
         input.iter()
             .for_each(|(uri, expected)| {
-                let result = form_full_url("https", uri, host, &Some(String::from("")));
+                let result = instance.form_full_url("https", uri, host, &Some(String::from("")));
                 let formatted = format!("{}{}", host, uri);
-                let scope = get_uri_scope(host, &formatted);
+                let scope = instance.link_type_checker.get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
             });
     }
@@ -115,11 +133,12 @@ mod tests {
         ];
 
         let host = "example.com";
+        let instance = UriService::new(host);
         input.iter()
             .for_each(|(parent_uri, uri, expected)| {
-                let result = form_full_url("https", uri, host, &Some(String::from("").add(parent_uri)));
+                let result = instance.form_full_url("https", uri, host, &Some(String::from("").add(parent_uri)));
                 let formatted = format!("{}{}", host, uri);
-                let scope = get_uri_scope(host, &formatted);
+                let scope = instance.link_type_checker.get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
             });
     }

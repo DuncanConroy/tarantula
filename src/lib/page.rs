@@ -1,6 +1,6 @@
 use hyper::{Body, HeaderMap, Response, StatusCode, Uri, Version};
 
-use linkresult::{Link, ResponseTimings, get_uri_protocol, UriScope};
+use linkresult::{Link, ResponseTimings UriScope, UriProtocol};
 
 #[derive(Debug, Clone)]
 pub struct PageResponse {
@@ -39,11 +39,10 @@ impl Page {
         page
     }
 
-    pub fn new_root(uri: String)->Page{
-        let protocol = get_uri_protocol("", &uri);
+    pub fn new_root(uri: String, protocol: Option<UriProtocol>) -> Page {
         Page::new(Link {
             scope: Some(UriScope::Root),
-            protocol: protocol.clone(),
+            protocol,
             uri,
             source_tag: None,
         })

@@ -21,7 +21,7 @@ enum RegexType {
     UnknownPrefix,
 }
 
-struct LinkTypeChecker {
+pub struct LinkTypeChecker {
     regexes: Arc<Mutex<HashMap<RegexType, Regex>>>,
 }
 
@@ -91,6 +91,10 @@ impl LinkTypeChecker {
             _ => "https",
         }
     }
+}
+
+pub fn init(host:&str)->LinkTypeChecker{
+    LinkTypeChecker::new(host)
 }
 
 pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol> {
@@ -261,7 +265,7 @@ mod tests {
 
         input_to_output
             .iter()
-            .map(|it| (&it.0, &it.1, &it.2, get_uri_protocol(it.0, it.1)))
+            .map(|it| (&it.0, &it.1, &it.2, instance.get_uri_protocol(it.0, it.1)))
             .for_each(|it| {
                 assert_eq!(
                     it.2, &it.3,
