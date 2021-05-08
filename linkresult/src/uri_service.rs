@@ -105,7 +105,8 @@ mod tests {
         ];
 
         let host = "example.com";
-        let instance = UriService::new(host);
+        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new("example.com")));
+        let instance = UriService::new(link_type_checker);
         input.iter()
             .for_each(|(uri, expected)| {
                 let result = instance.form_full_url("https", uri, host, &Some(String::from("")));
@@ -122,7 +123,8 @@ mod tests {
         ];
 
         let host = "example.com";
-        let instance = UriService::new(host);
+        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(host)));
+        let instance = UriService::new(link_type_checker);
         input.iter()
             .for_each(|(parent_uri, uri, expected)| {
                 let result = instance.form_full_url("https", uri, host, &Some(String::from("").add(parent_uri)));

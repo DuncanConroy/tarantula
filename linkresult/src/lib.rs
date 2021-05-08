@@ -93,16 +93,6 @@ impl LinkTypeChecker {
     }
 }
 
-pub fn get_uri_protocol(parent_protocol: &str, uri: &str) -> Option<UriProtocol> {
-    let instance = LinkTypeChecker::new("");
-    instance.get_uri_protocol(parent_protocol, uri)
-}
-
-pub fn get_uri_scope(host: &str, uri: &str) -> Option<UriScope> {
-    let instance = LinkTypeChecker::new(host);
-    instance.get_uri_scope(host, uri)
-}
-
 #[cfg(test)]
 mod tests {
     use rand::distributions::Alphanumeric;

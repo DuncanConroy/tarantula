@@ -4,7 +4,7 @@ use hyper::{Body, Client, header, Request, Response, Uri};
 use hyper_tls::HttpsConnector;
 use robotparser::RobotFileParser;
 
-use linkresult::{get_uri_scope, Link, uri_result, uri_service, UriResult, LinkTypeChecker};
+use linkresult::{Link, uri_result, uri_service, UriResult, LinkTypeChecker};
 use page::Page;
 use std::process;
 use std::sync::{Arc, Mutex};
@@ -69,13 +69,13 @@ struct AppContext<'a> {
 }
 
 impl AppContext<'_> {
-    pub fn new(uri: &str) -> AppContext{
+    pub fn new(uri: &str) -> AppContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let host = hyper_uri.host().unwrap();
-        let link_type_checker= Arc::new(Mutex::new(LinkTypeChecker::new(host)));
+        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(host)));
         let dom_parser = DomParser::new(link_type_checker.clone());
-        let uri_service =UriService::new(link_type_checker.clone());
-        AppContext{
+        let uri_service = UriService::new(link_type_checker.clone());
+        AppContext {
             root_uri: uri,
             link_type_checker,
             dom_parser,
@@ -199,7 +199,7 @@ async fn recursive_load_page_and_get_links(
     run_config: RunConfig,
     mut load_page_arguments: LoadPageArguments,
     all_known_links: Arc<TokioMutex<HashSet<String>>>,
-    app_context:&AppContext,
+    app_context: &AppContext,
 ) -> DynResult<Page> {
     if load_page_arguments.depth > run_config.maximum_depth {
         println!("Maximum depth exceeded ({} > {})!", load_page_arguments.depth, run_config.maximum_depth);
@@ -307,7 +307,7 @@ async fn find_links_to_visit(
         page_to_process.response_timings.parse_complete_time = Some(uri_result.parse_complete_time);
 
         let result: Vec<Link> = if same_domain_only {
-            let links_this_domain = get_same_domain_links(source_domain, &uri_result.links);
+            let links_this_domain = get_same_domain_links(source_domain, &uri_result.links, app_context.link_type_checker.clone());
             println!("Links on this domain: {}", links_this_domain.len());
             links_this_domain
         } else {
@@ -323,13 +323,13 @@ async fn find_links_to_visit(
     Ok(vec![])
 }
 
-fn get_same_domain_links(source_domain: &str, links: &Vec<Link>) -> Vec<Link> {
+fn get_same_domain_links(source_domain: &str, links: &Vec<Link>, link_type_checker: Arc<Mutex<LinkTypeChecker>>) -> Vec<Link> {
     let mut cloned_links = links.clone();
     cloned_links.sort_by(|a, b| a.uri.cmp(&b.uri));
     cloned_links.dedup_by(|a, b| a.uri.eq(&b.uri));
     cloned_links
         .iter()
-        .map(|it| (it, get_uri_scope(source_domain, it.uri.as_str())))
+        .map(|it| (it, link_type_checker.lock().unwrap().get_uri_scope(source_domain, it.uri.as_str())))
         .filter_map(|it| match it.1 {
             Some(uri_result::UriScope::Root)
             | Some(uri_result::UriScope::SameDomain)
@@ -382,7 +382,8 @@ mod tests {
             "https://faq.example.com/",
         ];
 
-        let result = get_same_domain_links("example.com", &str_to_links(all_links()));
+        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new("example.com")));
+        let result = get_same_domain_links("example.com", &str_to_links(all_links()), link_type_checker);
 
         assert_eq!(result.len(), 8, "{:?}\n{:?}", result, sorted_expected);
         let result_strings: Vec<&String> = result.iter().map(|it| &it.uri).collect();
