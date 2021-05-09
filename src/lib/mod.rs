@@ -277,7 +277,7 @@ async fn recursive_load_page_and_get_links(
             .page
             .response_timings
             .children_compete_time = Some(Utc::now());
-        tx.send(load_page_arguments.page.clone());
+        tx.send(load_page_arguments.page.clone()).await?;
         Ok(load_page_arguments.page)
     }).await?
 }

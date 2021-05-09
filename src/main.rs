@@ -59,7 +59,7 @@ async fn process() {
 
     let manager = tokio::spawn(async move {
         while let Some(page) = rx.recv().await {
-            println!("Received from threads: {:?}", page);
+            info!("Received from threads: {:?}", page);
         }
     });
 
