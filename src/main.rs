@@ -1,10 +1,10 @@
 use std::str::FromStr;
-use std::sync::mpsc;
 
 use clap::App;
 use clap::load_yaml;
 use log::{info, trace};
 use log4rs;
+use tokio::sync::mpsc;
 
 use lib::*;
 
@@ -17,7 +17,6 @@ async fn main() -> DynResult<()> {
     info!("Starting tarantula");
 
     // todo: restructure memory layout to use a centralized list of strings/uris, e.g. like string table in AVM
-    // todo: cleanup memory consumption
     // todo: stream results to WHERE? :D
     // TODO: multi-threaded
     process().await;
@@ -51,14 +50,22 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
 
 async fn process() {
     let run_config = parse_runconfig_from_args().unwrap();
-    let (tx, rx) = mpsc::channel();
-    let handle = tokio::spawn(async move {
-        let page_result = lib::init(run_config).await;
-        tx.send(page_result);
+    let num_cpus = num_cpus::get();
+    let (tx, mut rx) = mpsc::channel(num_cpus * 2);
+    let page_handle = tokio::spawn(async move {
+        let page_result = lib::init(run_config, tx).await;
+        //tx.send(page_result.unwrap());
     });
 
-    let page = rx.recv().unwrap();
+    let manager = tokio::spawn(async move {
+        while let Some(page) = rx.recv().await {
+            println!("Received from threads: {:?}", page);
+        }
+    });
+
+    page_handle.await.unwrap();
+    manager.await.unwrap();
 
     info!("Finished.");
-    trace!("Tarantula result:\n{:?}", page.unwrap())
+//    trace!("Tarantula result:\n{:?}", page.unwrap())
 }

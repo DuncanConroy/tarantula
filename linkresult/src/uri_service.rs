@@ -9,6 +9,8 @@ pub struct UriService {
     link_type_checker: Arc<Mutex<LinkTypeChecker>>,
 }
 
+unsafe impl Send for UriService {}
+
 impl UriService {
     pub fn new(link_type_checker: Arc<Mutex<LinkTypeChecker>>) -> UriService {
         UriService { link_type_checker }
