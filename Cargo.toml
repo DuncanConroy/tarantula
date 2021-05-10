@@ -10,12 +10,14 @@ edition = "2018"
 members = [
     "dom_parser",
     "linkresult",
+    "page_loader",
 ]
 
 [dependencies]
 # internal
 dom_parser = { path = "dom_parser" }
 linkresult = { path = "linkresult" }
+page_loader = { path = "page_loader" }
 # external
 async-recursion = "0.3.2"
 chrono = "0.4.19"

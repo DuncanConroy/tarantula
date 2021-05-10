@@ -26,7 +26,7 @@ build_stretch:
     - source $CARGO_HOME/env
     # the following line could be commented out unless a specific nightly is needed
     #    - rustup default nightly-2020-05-15-x86_64-unknown-linux-gnu
-    - cargo test --all --workspace
+    - cargo test --workspace
     - cargo build --release
     - rm -rf tarantula 2> /dev/null
     - mkdir tarantula
