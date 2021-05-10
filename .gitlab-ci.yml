@@ -15,22 +15,16 @@ before_script:
   #- '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
 
 
-build:
+build_latest:
   stage: build
   image: 'rust:latest'
   script:
-    #- apt-get install -y bash curl build-essential openssl pkg-config libssl-dev
-    #    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
-    # comment in the following line to use current stable
-    #- curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y --default-toolchain nightly
     - rustup default nightly
     - source $CARGO_HOME/env
-    # the following line could be commented out unless a specific nightly is needed
-    #    - rustup default nightly-2020-05-15-x86_64-unknown-linux-gnu
     - cargo test --workspace
     - cargo build --release
-    - rm -rf tarantula 2> /dev/null
-    - mkdir tarantula
+#    - rm -rf tarantula 2> /dev/null
+#    - mkdir tarantula
 #    - mv deploy.sh ***REMOVED***/deploy.sh
 #    - mv target/release/***REMOVED***-backend ***REMOVED***/
 #    - scp -r ***REMOVED*** ***REMOVED***@be.***REMOVED***.io:~
