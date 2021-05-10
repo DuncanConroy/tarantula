@@ -38,7 +38,7 @@ build_stretch:
     paths:
       - tarantula
   only:
-    - master
+    - main
 
 cache:
   paths:
