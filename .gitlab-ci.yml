@@ -8,11 +8,11 @@ variables:
 before_script:
   - apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update -yq
   - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y
-  - 'which ssh-agent || ( apt-get install -qq openssh-client )'
-  - eval $(ssh-agent -s)
-  - ssh-add <(echo "$SSH_PRIVATE_KEY")
-  - mkdir -p ~/.ssh
-  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+  #- 'which ssh-agent || ( apt-get install -qq openssh-client )'
+  #- eval $(ssh-agent -s)
+  #- ssh-add <(echo "$SSH_PRIVATE_KEY")
+  #- mkdir -p ~/.ssh
+  #- '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
 
 
 build_stretch:
