@@ -1,0 +1,47 @@
+stages:
+  - build
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/cargo
+  APT_CACHE_DIR: $CI_PROJECT_DIR/apt
+
+before_script:
+  - apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update -yq
+  - apt-get install -o dir::cache::archives="$APT_CACHE_DIR" -y
+  - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+  - eval $(ssh-agent -s)
+  - ssh-add <(echo "$SSH_PRIVATE_KEY")
+  - mkdir -p ~/.ssh
+  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+
+
+build_stretch:
+  stage: build
+  image: 'debian:stretch'
+  script:
+    - apt-get install -y bash curl build-essential openssl pkg-config libssl-dev
+    #    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
+    # comment in the following line to use current stable
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y --default-toolchain nightly
+    - source $CARGO_HOME/env
+    # the following line could be commented out unless a specific nightly is needed
+    #    - rustup default nightly-2020-05-15-x86_64-unknown-linux-gnu
+    - cargo test --all --workspace
+    - cargo build --release
+    - rm -rf tarantula 2> /dev/null
+    - mkdir tarantula
+#    - mv deploy.sh ***REMOVED***/deploy.sh
+#    - mv target/release/***REMOVED***-backend ***REMOVED***/
+#    - scp -r ***REMOVED*** ***REMOVED***@be.***REMOVED***.io:~
+#    - ssh ***REMOVED***@be.***REMOVED***.io 'cd ***REMOVED***; ./deploy.sh'
+  artifacts:
+    paths:
+      - tarantula
+  only:
+    - master
+
+cache:
+  paths:
+    - apt/
+    - cargo/
+    - target/
