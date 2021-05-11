@@ -1,9 +1,7 @@
 // Event-driven page loader
 
-use std::sync::{Arc, Mutex};
-
 use tokio::sync::{mpsc, oneshot};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Sender;
 
 pub struct PageLoaderService {
     mpsc_sender: Option<Sender<Command>>,
@@ -26,7 +24,7 @@ impl PageLoaderService {
                 match event {
                     Command::LoadPage { url, response_channel } => {
                         println!("got url: {:?}", url);
-                        response_channel.send(url);
+                        response_channel.send(url).expect("Could not send result to response channel");
                     }
                 }
             }
@@ -45,8 +43,6 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use tokio::sync::mpsc;
-
     use crate::*;
     use crate::Command::LoadPage;
 
@@ -56,8 +52,8 @@ mod tests {
         let tx = page_loader_service.init();
         let (resp_tx, resp_rx) = oneshot::channel();
         let send_result = tx.send(LoadPage { url: String::from("https://example.com"), response_channel: resp_tx }).await;
-        assert_eq!(true, send_result.is_ok());
 
+        assert_eq!(true, send_result.is_ok());
         assert_eq!("https://example.com", resp_rx.await.unwrap());
     }
 }
