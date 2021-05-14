@@ -1308,6 +1308,8 @@ name = "page_loader"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "log",
+ "log4rs",
  "num_cpus",
  "tokio 1.5.0",
 ]
