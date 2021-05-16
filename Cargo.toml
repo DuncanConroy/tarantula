@@ -8,6 +8,7 @@ edition = "2018"
 
 [workspace]
 members = [
+    "core",
     "dom_parser",
     "linkresult",
     "page_loader",
@@ -16,6 +17,7 @@ members = [
 [dependencies]
 # internal
 core = { path = "core" }
+page_loader = { path = "page_loader" }
 # external
 clap = { version = "2.33", features = ["yaml"] }
 num_cpus = "1.13.0"

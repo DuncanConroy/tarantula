@@ -5,7 +5,9 @@ use clap::load_yaml;
 use log::{info, trace};
 use tokio::sync::mpsc;
 
-use core::core::{RunConfig, DynResult};
+use core::core::{DynResult, RunConfig};
+use page_loader::page_loader_service::Command::LoadPage;
+use page_loader::page_loader_service::PageLoaderService;
 
 #[tokio::main]
 async fn main() -> DynResult<()> {
@@ -48,19 +50,24 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
 async fn process() {
     let run_config = parse_runconfig_from_args().unwrap();
     let num_cpus = num_cpus::get();
-    let (tx, mut rx) = mpsc::channel(num_cpus * 2);
-    let page_handle = tokio::spawn(async move {
-        let page_result = core::core::init(run_config, tx).await;
-        //tx.send(page_result.unwrap());
-    });
+    let tx = PageLoaderService::init();
+    let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
+    let send_result = tx.send(LoadPage { url: run_config.url, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
+
+
+    // let (tx, mut rx) = mpsc::channel(num_cpus * 2);
+    // let page_handle = tokio::spawn(async move {
+    //     let page_result = core::core::init(run_config, tx).await;
+    //tx.send(page_result.unwrap());
+    // });
 
     let manager = tokio::spawn(async move {
-        while let Some(page) = rx.recv().await {
+        while let Some(page) = resp_rx.recv().await {
             info!("Received from threads: {:?}", page);
         }
     });
 
-    page_handle.await.unwrap();
+    // page_handle.await.unwrap();
     manager.await.unwrap();
 
     info!("Finished.");
