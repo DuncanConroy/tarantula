@@ -1308,6 +1308,10 @@ name = "page_loader"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dom_parser",
+ "hyper 0.14.4",
+ "hyper-tls 0.5.0",
+ "linkresult",
  "log",
  "log4rs",
  "num_cpus",

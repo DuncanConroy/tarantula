@@ -30,7 +30,7 @@ impl PageLoaderService {
                         debug!("received LoadPage command with url: {} on thread {:?}", url, thread::current().name());
                         let tx_task = tx_clone.clone();
                         tokio::spawn(async move {
-                            foo(response_channel, url, tx_task).await
+                            do_load(response_channel, url, tx_task).await
                         }).await;
                     }
                 }
@@ -42,7 +42,7 @@ impl PageLoaderService {
     }
 }
 
-async fn foo(response_channel: Sender<String>, url: String, tx: Sender<Command>) {
+async fn do_load(response_channel: Sender<String>, url: String, tx: Sender<Command>) {
     debug!("got url: {:?}", url);
     response_channel.send(url.clone()).await.expect("Could not send result to response channel");
     if url != String::from("https://inner") {
