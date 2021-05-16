@@ -6,14 +6,14 @@ use dom_parser::DomParser;
 use linkresult::LinkTypeChecker;
 use linkresult::uri_service::UriService;
 
-pub(crate) struct TaskContext {
+pub struct TaskContext {
     task_config: TaskConfig,
     dom_parser: DomParser,
     link_type_checker: Arc<Mutex<LinkTypeChecker>>,
     uri_service: UriService,
 }
 
-pub struct TaskConfig {
+struct TaskConfig {
     uri: Uri,
     ignore_redirects: bool,
     maximum_redirects: u8,
@@ -37,7 +37,7 @@ impl TaskConfig {
     }
 }
 
-fn init(uri: String) -> TaskContext {
+pub fn init(uri: String) -> TaskContext {
     let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
     let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(hyper_uri.host().unwrap())));
     let dom_parser = DomParser::new(link_type_checker.clone());

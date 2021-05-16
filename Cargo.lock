@@ -247,7 +247,6 @@ dependencies = [
  "log",
  "log4rs",
  "num_cpus",
- "page_loader",
  "robotparser",
  "testutils",
  "tokio 1.5.0",
@@ -1329,15 +1328,16 @@ dependencies = [
 name = "page_loader"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "dom_parser",
- "hyper 0.14.4",
- "hyper-tls 0.5.0",
- "linkresult",
- "log",
- "log4rs",
- "num_cpus",
- "tokio 1.5.0",
+    "chrono",
+    "core",
+    "dom_parser",
+    "hyper 0.14.4",
+    "hyper-tls 0.5.0",
+    "linkresult",
+    "log",
+    "log4rs",
+    "num_cpus",
+    "tokio 1.5.0",
 ]
 
 [[package]]
@@ -2167,13 +2167,14 @@ dependencies = [
 name = "tarantula"
 version = "0.1.0"
 dependencies = [
- "clap",
- "core",
- "log",
- "log4rs",
- "num_cpus",
- "testutils",
- "tokio 1.5.0",
+    "clap",
+    "core",
+    "log",
+    "log4rs",
+    "num_cpus",
+    "page_loader",
+    "testutils",
+    "tokio 1.5.0",
 ]
 
 [[package]]
