@@ -3,12 +3,9 @@ use std::str::FromStr;
 use clap::App;
 use clap::load_yaml;
 use log::{info, trace};
-use log4rs;
 use tokio::sync::mpsc;
 
-use lib::*;
-
-mod lib;
+use core::core::{RunConfig, DynResult};
 
 #[tokio::main]
 async fn main() -> DynResult<()> {
@@ -53,7 +50,7 @@ async fn process() {
     let num_cpus = num_cpus::get();
     let (tx, mut rx) = mpsc::channel(num_cpus * 2);
     let page_handle = tokio::spawn(async move {
-        let page_result = lib::init(run_config, tx).await;
+        let page_result = core::core::init(run_config, tx).await;
         //tx.send(page_result.unwrap());
     });
 

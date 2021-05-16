@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::ops::Deref;
 use std::process;
 use std::sync::{Arc, Mutex};
 
