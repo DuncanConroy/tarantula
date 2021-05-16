@@ -15,23 +15,13 @@ members = [
 
 [dependencies]
 # internal
-dom_parser = { path = "dom_parser" }
-linkresult = { path = "linkresult" }
-page_loader = { path = "page_loader" }
+core = { path = "core" }
 # external
-async-recursion = "0.3.2"
-chrono = "0.4.19"
 clap = { version = "2.33", features = ["yaml"] }
-futures = "0.3.12"
-hyper = { version = "0.14", features = ["full"] }
-hyper-tls = "0.5.0"
 num_cpus = "1.13.0"
 log = "0.4.14"
 log4rs = "1.0.0"
-#pretty_env_logger = "0.4"
-robotparser = "0.10.2"
 tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1.5"
 
 [dev-dependencies]
 testutils = { path = "testutils" }
