@@ -8,7 +8,7 @@ pub struct PageResponse {
 }
 
 impl PageResponse {
-    fn new(original_requested_url: String) -> PageResponse {
+    pub fn new(original_requested_url: String) -> PageResponse {
         PageResponse {
             original_requested_url,
             final_url_after_redirects: None,

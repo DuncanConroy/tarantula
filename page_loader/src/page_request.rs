@@ -1,6 +1,15 @@
 use chrono::{DateTime, Utc};
 
 pub struct PageRequest {
-    url: String,
-    last_crawled_timestamp: Option<DateTime<Utc>>,
+    pub url: String,
+    pub last_crawled_timestamp: Option<DateTime<Utc>>,
+}
+
+impl PageRequest {
+    pub fn new(url: String, last_crawled_timestamp: Option<DateTime<Utc>>) -> PageRequest {
+        PageRequest {
+            url,
+            last_crawled_timestamp,
+        }
+    }
 }
