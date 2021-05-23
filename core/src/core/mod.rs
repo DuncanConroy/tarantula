@@ -13,7 +13,7 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_stream::StreamExt;
 
 use dom_parser::DomParser;
-use linkresult::{Link, LinkTypeChecker, uri_result, uri_service, UriResult};
+use linkresult::{Link, LinkTypeChecker, uri_result, UriResult};
 use linkresult::uri_service::UriService;
 use page::Page;
 

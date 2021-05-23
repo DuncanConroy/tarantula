@@ -233,27 +233,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core"
-version = "0.1.0"
-dependencies = [
- "async-recursion",
- "chrono",
- "clap",
- "dom_parser",
- "futures 0.3.12",
- "hyper 0.14.4",
- "hyper-tls 0.5.0",
- "linkresult",
- "log",
- "log4rs",
- "num_cpus",
- "robotparser",
- "testutils",
- "tokio 1.5.0",
- "tokio-stream",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1400,18 +1379,18 @@ dependencies = [
 name = "page_loader"
 version = "0.1.0"
 dependencies = [
-    "chrono",
-    "core",
-    "dom_parser",
-    "hyper 0.14.4",
-    "hyper-tls 0.5.0",
-    "linkresult",
-    "log",
-    "log4rs",
-    "mockall",
-    "mockall_double",
-    "num_cpus",
-    "tokio 1.5.0",
+ "chrono",
+ "dom_parser",
+ "hyper 0.14.4",
+ "hyper-tls 0.5.0",
+ "linkresult",
+ "log",
+ "log4rs",
+ "mockall",
+ "mockall_double",
+ "num_cpus",
+ "tarantula_core",
+ "tokio 1.5.0",
 ]
 
 [[package]]
@@ -2270,14 +2249,35 @@ dependencies = [
 name = "tarantula"
 version = "0.1.0"
 dependencies = [
-    "clap",
-    "core",
-    "log",
-    "log4rs",
-    "num_cpus",
-    "page_loader",
-    "testutils",
-    "tokio 1.5.0",
+ "clap",
+ "log",
+ "log4rs",
+ "num_cpus",
+ "page_loader",
+ "tarantula_core",
+ "testutils",
+ "tokio 1.5.0",
+]
+
+[[package]]
+name = "tarantula_core"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "chrono",
+ "clap",
+ "dom_parser",
+ "futures 0.3.12",
+ "hyper 0.14.4",
+ "hyper-tls 0.5.0",
+ "linkresult",
+ "log",
+ "log4rs",
+ "num_cpus",
+ "robotparser",
+ "testutils",
+ "tokio 1.5.0",
+ "tokio-stream",
 ]
 
 [[package]]
