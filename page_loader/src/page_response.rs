@@ -1,10 +1,13 @@
+use linkresult::Link;
+
 pub struct PageResponse {
-    original_requested_url: String,
-    final_url_after_redirects: Option<String>,
-    redirected_from: Option<Box<PageResponse>>,
-    status_code: Option<u16>,
-    head: Option<String>,
-    body: Option<String>,
+    pub original_requested_url: String,
+    pub final_url_after_redirects: Option<String>,
+    pub redirected_from: Option<Box<PageResponse>>,
+    pub status_code: Option<u16>,
+    pub head: Option<String>,
+    pub body: Option<String>,
+    pub links: Option<Vec<Link>>,
 }
 
 impl PageResponse {
@@ -16,6 +19,7 @@ impl PageResponse {
             status_code: None,
             head: None,
             body: None,
+            links: None,
         }
     }
 
