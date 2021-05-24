@@ -519,7 +519,7 @@ dependencies = [
     "cfg-if 1.0.0",
     "crc32fast",
     "libc",
- "miniz_oxide",
+    "miniz_oxide",
 ]
 
 [[package]]
@@ -2280,8 +2280,8 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f24c8e5e19d22a726626f1a5e16fe15b132dcf21d10177fa5a45ce7962996b97"
 dependencies = [
- "phf_generator",
- "phf_shared",
+    "phf_generator",
+    "phf_shared",
     "proc-macro2",
     "quote",
 ]
