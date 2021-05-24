@@ -336,9 +336,10 @@ fn get_same_domain_links(source_domain: &str, links: &Vec<Link>, link_type_check
     let mut cloned_links = links.clone();
     cloned_links.sort_by(|a, b| a.uri.cmp(&b.uri));
     cloned_links.dedup_by(|a, b| a.uri.eq(&b.uri));
+    let locked_type_checker = link_type_checker.lock().unwrap();
     cloned_links
         .iter()
-        .map(|it| (it, link_type_checker.lock().unwrap().get_uri_scope(source_domain, it.uri.as_str())))
+        .map(|it| (it, locked_type_checker.get_uri_scope(source_domain, it.uri.as_str())))
         .filter_map(|it| match it.1 {
             Some(uri_result::UriScope::Root)
             | Some(uri_result::UriScope::SameDomain)
