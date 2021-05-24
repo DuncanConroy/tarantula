@@ -5,9 +5,9 @@ use clap::load_yaml;
 use log::{info, trace};
 use tokio::sync::mpsc;
 
-use core::core::{DynResult, RunConfig};
 use page_loader::page_loader_service::Command::LoadPage;
 use page_loader::page_loader_service::PageLoaderService;
+use tarantula_core::core::{DynResult, RunConfig};
 
 #[tokio::main]
 async fn main() -> DynResult<()> {
