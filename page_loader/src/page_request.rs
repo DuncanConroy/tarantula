@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 
+#[derive(Clone, Debug)]
 pub struct PageRequest {
     pub url: String,
     pub last_crawled_timestamp: Option<DateTime<Utc>>,

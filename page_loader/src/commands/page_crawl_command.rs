@@ -1,21 +1,26 @@
 use crate::page_request::PageRequest;
 use crate::page_response::PageResponse;
 
-// use mockall::automock;
+pub trait CrawlCommand: Send {
+    fn get_url_clone(&self) -> String;
+    fn crawl(&self) -> PageResponse;
+}
 
-// #[cfg_attr(test, faux::create)]
+#[derive(Clone, Debug)]
 pub struct PageCrawlCommand {
     pub request_object: PageRequest,
 }
 
-// #[automock]
-// #[cfg_attr(test, faux::methods)]
 impl PageCrawlCommand {
     pub fn new(url: String) -> PageCrawlCommand {
         PageCrawlCommand { request_object: PageRequest::new(url, None) }
     }
+}
 
-    pub fn crawl(&self) -> PageResponse {
+impl CrawlCommand for PageCrawlCommand {
+    fn get_url_clone(&self) -> String { self.request_object.url.clone() }
+
+    fn crawl(&self) -> PageResponse {
         PageResponse::new(self.request_object.url.clone())
     }
 }

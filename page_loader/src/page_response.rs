@@ -1,5 +1,6 @@
 use linkresult::Link;
 
+#[derive(Debug, Clone)]
 pub struct PageResponse {
     pub original_requested_url: String,
     pub final_url_after_redirects: Option<String>,

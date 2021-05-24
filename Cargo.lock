@@ -185,14 +185,14 @@ version = "2.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37e58ac78573c40708d45522f0d80fa2f01cc4f9b4e2bf749807255454312002"
 dependencies = [
- "ansi_term",
- "atty",
- "bitflags",
- "strsim",
- "textwrap",
- "unicode-width",
- "vec_map",
- "yaml-rust 0.3.5",
+    "ansi_term",
+    "atty",
+    "bitflags",
+    "strsim 0.8.0",
+    "textwrap",
+    "unicode-width",
+    "vec_map",
+    "yaml-rust 0.3.5",
 ]
 
 [[package]]
@@ -328,8 +328,43 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfae75de57f2b2e85e8768c3ea840fd159c8f33e2b6522c7835b7abac81be16e"
 dependencies = [
- "quote",
- "syn",
+    "quote",
+    "syn",
+]
+
+[[package]]
+name = "darling"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f2c43f534ea4b0b049015d00269734195e6d3f0f6635cb692251aca6f9f8b3c"
+dependencies = [
+    "darling_core",
+    "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e91455b86830a1c21799d94524df0845183fa55bafd9aa137b01c7d1065fa36"
+dependencies = [
+    "fnv",
+    "ident_case",
+    "proc-macro2",
+    "quote",
+    "strsim 0.10.0",
+    "syn",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29b5acf0dea37a7f66f7b25d2c5e93fd46f8f6968b1a5d7a3e02e97768afc95a"
+dependencies = [
+    "darling_core",
+    "quote",
+    "syn",
 ]
 
 [[package]]
@@ -338,9 +373,9 @@ version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
 dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+    "proc-macro2",
+    "quote",
+    "syn",
 ]
 
 [[package]]
@@ -449,8 +484,30 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe09872bd11351a75f22b24c3769fc863e8212d926d6db46b94ad710d14cc5cc"
 dependencies = [
- "bit-set",
- "regex",
+    "bit-set",
+    "regex",
+]
+
+[[package]]
+name = "faux"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40c3668239842a12c1810beec5afa357caa1aca3ee6b7cd9c60514af9787061f"
+dependencies = [
+    "faux_macros",
+    "paste",
+]
+
+[[package]]
+name = "faux_macros"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bba2d3cc6542e349914482eea66e5c5cee9c6acd63b8fda73698b974234869f7"
+dependencies = [
+    "darling",
+    "proc-macro2",
+    "quote",
+    "syn",
 ]
 
 [[package]]
@@ -459,9 +516,9 @@ version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd3aec53de10fe96d7d8c565eb17f2c687bb5518a2ec453b5b1252964526abe0"
 dependencies = [
- "cfg-if 1.0.0",
- "crc32fast",
- "libc",
+    "cfg-if 1.0.0",
+    "crc32fast",
+    "libc",
  "miniz_oxide",
 ]
 
@@ -902,12 +959,18 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
 dependencies = [
- "bytes 1.0.1",
- "hyper 0.14.4",
- "native-tls",
- "tokio 1.5.0",
- "tokio-native-tls",
+    "bytes 1.0.1",
+    "hyper 0.14.4",
+    "native-tls",
+    "tokio 1.5.0",
+    "tokio-native-tls",
 ]
+
+[[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idna"
@@ -915,9 +978,9 @@ version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38f09e0f0b1fb55fdee1f17470ad800da77af5186a1a76c026b679358b7e844e"
 dependencies = [
- "matches",
- "unicode-bidi",
- "unicode-normalization",
+    "matches",
+    "unicode-bidi",
+    "unicode-normalization",
 ]
 
 [[package]]
@@ -1379,18 +1442,19 @@ dependencies = [
 name = "page_loader"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "dom_parser",
- "hyper 0.14.4",
- "hyper-tls 0.5.0",
- "linkresult",
- "log",
- "log4rs",
- "mockall",
- "mockall_double",
- "num_cpus",
- "tarantula_core",
- "tokio 1.5.0",
+    "chrono",
+    "dom_parser",
+    "faux",
+    "hyper 0.14.4",
+    "hyper-tls 0.5.0",
+    "linkresult",
+    "log",
+    "log4rs",
+    "mockall",
+    "mockall_double",
+    "num_cpus",
+    "tarantula_core",
+    "tokio 1.5.0",
 ]
 
 [[package]]
@@ -1436,13 +1500,19 @@ version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ccb628cad4f84851442432c60ad8e1f607e29752d0bf072cbd0baf28aa34272"
 dependencies = [
- "cfg-if 1.0.0",
- "instant",
- "libc",
- "redox_syscall 0.1.57",
- "smallvec 1.6.1",
- "winapi 0.3.9",
+    "cfg-if 1.0.0",
+    "instant",
+    "libc",
+    "redox_syscall 0.1.57",
+    "smallvec 1.6.1",
+    "winapi 0.3.9",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
 
 [[package]]
 name = "percent-encoding"
@@ -2212,8 +2282,8 @@ checksum = "f24c8e5e19d22a726626f1a5e16fe15b132dcf21d10177fa5a45ce7962996b97"
 dependencies = [
  "phf_generator",
  "phf_shared",
- "proc-macro2",
- "quote",
+    "proc-macro2",
+    "quote",
 ]
 
 [[package]]
@@ -2223,14 +2293,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 
 [[package]]
-name = "syn"
-version = "1.0.58"
+name = "strsim"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc60a3d73ea6594cd712d830cc1f0390fd71542d8c8cd24e70cc54cdfd5e05d5"
+checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
+name = "syn"
+version = "1.0.67"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6498a9efc342871f91cc2d0d694c674368b4ceb40f62b65a7a08c3792935e702"
 dependencies = [
- "proc-macro2",
- "quote",
- "unicode-xid",
+    "proc-macro2",
+    "quote",
+    "unicode-xid",
 ]
 
 [[package]]
