@@ -8,9 +8,24 @@ use linkresult::uri_service::UriService;
 
 pub struct TaskContext {
     task_config: TaskConfig,
-    dom_parser: DomParser,
+    dom_parser: Arc<Mutex<DomParser>>,
     link_type_checker: Arc<Mutex<LinkTypeChecker>>,
-    uri_service: UriService,
+    uri_service: Arc<Mutex<UriService>>,
+}
+
+impl TaskContext {
+    pub fn init(uri: String) -> TaskContext {
+        let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
+        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(hyper_uri.host().unwrap())));
+        let dom_parser = Arc::new(Mutex::new(DomParser::new(link_type_checker.clone())));
+        let uri_service = Arc::new(Mutex::new(UriService::new(link_type_checker.clone())));
+        TaskContext {
+            task_config: TaskConfig::new(uri),
+            dom_parser,
+            link_type_checker,
+            uri_service,
+        }
+    }
 }
 
 struct TaskConfig {
@@ -34,18 +49,5 @@ impl TaskConfig {
             keep_html_in_memory: false,
             user_agent: String::from("tarantula"),
         }
-    }
-}
-
-pub fn init(uri: String) -> TaskContext {
-    let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
-    let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(hyper_uri.host().unwrap())));
-    let dom_parser = DomParser::new(link_type_checker.clone());
-    let uri_service = UriService::new(link_type_checker.clone());
-    TaskContext {
-        task_config: TaskConfig::new(uri),
-        dom_parser,
-        link_type_checker,
-        uri_service,
     }
 }

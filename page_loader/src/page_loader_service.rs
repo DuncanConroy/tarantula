@@ -34,6 +34,8 @@ impl CommandFactory for PageCrawlCommandFactory {
 
 pub struct PageLoaderService {
     mpsc_sender: Option<Sender<Command>>,
+    // all_known_links/AppContext/TaskContext
+    // services
 }
 
 impl PageLoaderService {
@@ -149,6 +151,7 @@ mod tests {
         fn crawl(&self) -> PageResponse {
             let mut response = PageResponse::new(self.url.clone());
             if self.url != "https://inner" {
+                // if this is the initial crawl, we want to emulate additional links`
                 response.links = Some(vec![Link::from_str("https://inner")]);
             }
             response
