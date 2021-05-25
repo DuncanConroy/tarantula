@@ -36,6 +36,10 @@ pub struct PageLoaderService {
     mpsc_sender: Option<Sender<Command>>,
     // all_known_links/AppContext/TaskContext
     // services
+
+    // angenommen wir packen hier eine hashmap hin mit domain -> known_links. wann koennen wir diese map wieder aufraeumen?
+    // ggf. timestamp des letzten LoadPage commands mitspeichern irgendwo und wenn diff zu jetzt > 1-10 min, speicher freigeben.
+    // das koennen wir wunderbar im taskcontext speichern und den dann irgendwann auslaufen lassen
 }
 
 impl PageLoaderService {
@@ -105,7 +109,12 @@ pub enum Command {
         url: String,
         last_crawled_timestamp: u64,
         response_channel: mpsc::Sender<Page>,
-    }
+    },
+    // InitWebsiteLoadingCommand{
+    //     url: String,
+    // }
+
+    // separate command/flag for initial page? InitWebsiteLoadingCommand?
 }
 
 #[cfg(test)]

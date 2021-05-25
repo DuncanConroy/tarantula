@@ -15,9 +15,7 @@ async fn main() -> DynResult<()> {
     // pretty_env_logger::init();
     info!("Starting tarantula");
 
-    // todo: restructure memory layout to use a centralized list of strings/uris, e.g. like string table in AVM
-    // todo: stream results to WHERE? :D
-    // TODO: multi-threaded
+    // TODO: webserver endpoint
     process().await;
     Ok(())
 }
@@ -52,14 +50,8 @@ async fn process() {
     let num_cpus = num_cpus::get();
     let tx = PageLoaderService::init();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
+    // PrepareForHostCommand?
     let send_result = tx.send(LoadPage { url: run_config.url, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
-
-
-    // let (tx, mut rx) = mpsc::channel(num_cpus * 2);
-    // let page_handle = tokio::spawn(async move {
-    //     let page_result = core::core::init(run_config, tx).await;
-    //tx.send(page_result.unwrap());
-    // });
 
     let manager = tokio::spawn(async move {
         while let Some(page) = resp_rx.recv().await {
@@ -67,9 +59,7 @@ async fn process() {
         }
     });
 
-    // page_handle.await.unwrap();
     manager.await.unwrap();
 
     info!("Finished.");
-//    trace!("Tarantula result:\n{:?}", page.unwrap())
 }
