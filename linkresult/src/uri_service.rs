@@ -6,13 +6,13 @@ use log::trace;
 use crate::{LinkTypeChecker, UriProtocol, UriScope};
 
 pub struct UriService {
-    link_type_checker: Arc<Mutex<LinkTypeChecker>>,
+    link_type_checker: Arc<LinkTypeChecker>,
 }
 
 unsafe impl Send for UriService {}
 
 impl UriService {
-    pub fn new(link_type_checker: Arc<Mutex<LinkTypeChecker>>) -> UriService {
+    pub fn new(link_type_checker: Arc<LinkTypeChecker>) -> UriService {
         UriService { link_type_checker }
     }
 
@@ -24,14 +24,14 @@ impl UriService {
             let adjusted_uri = prefix_uri_with_forward_slash(&normalized_uri);
             to_uri(&create_uri_string(protocol, host, &adjusted_uri))
         };
-        let link_type_checker = self.link_type_checker.lock().unwrap();
-        if let Some(scope) = link_type_checker.get_uri_scope(host, uri) {
+
+        if let Some(scope) = self.link_type_checker.get_uri_scope(host, uri) {
             return match scope {
                 UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
                 UriScope::SameDomain => do_normalize(uri, parent_uri),
                 UriScope::Anchor => do_normalize(uri, parent_uri),
                 _ => {
-                    if let Some(uri_protocol) = link_type_checker.get_uri_protocol(protocol, uri) {
+                    if let Some(uri_protocol) = self.link_type_checker.get_uri_protocol(protocol, uri) {
                         if uri_protocol == UriProtocol::IMPLICIT {
                             return format!("{}:{}", protocol, uri).parse::<hyper::Uri>().unwrap();
                         }
@@ -111,13 +111,13 @@ mod tests {
         ];
 
         let host = "example.com";
-        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(host)));
+        let link_type_checker = Arc::new(LinkTypeChecker::new(host));
         let instance = UriService::new(link_type_checker.clone());
         input.iter()
             .for_each(|(uri, expected)| {
                 let result = instance.form_full_url("https", uri, host, &Some(String::from("")));
                 let formatted = format!("{}{}", host, uri);
-                let scope = link_type_checker.lock().unwrap().get_uri_scope(host, &formatted);
+                let scope = link_type_checker.get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
             });
     }
@@ -129,13 +129,13 @@ mod tests {
         ];
 
         let host = "example.com";
-        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(host)));
+        let link_type_checker = Arc::new(LinkTypeChecker::new(host));
         let instance = UriService::new(link_type_checker.clone());
         input.iter()
             .for_each(|(parent_uri, uri, expected)| {
                 let result = instance.form_full_url("https", uri, host, &Some(String::from("").add(parent_uri)));
                 let formatted = format!("{}{}", host, uri);
-                let scope = link_type_checker.lock().unwrap().get_uri_scope(host, &formatted);
+                let scope = link_type_checker.get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
             });
     }

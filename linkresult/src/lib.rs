@@ -22,7 +22,7 @@ enum RegexType {
 }
 
 pub struct LinkTypeChecker {
-    regexes: Arc<Mutex<HashMap<RegexType, Regex>>>,
+    regexes: Arc<HashMap<RegexType, Regex>>,
 }
 
 impl LinkTypeChecker {
@@ -39,12 +39,12 @@ impl LinkTypeChecker {
         hash_map.insert(RegexType::UnknownPrefix, Regex::new("^(?!https?)[a-zA-Z0-9]+:.*").unwrap());
 
         LinkTypeChecker {
-            regexes: Arc::new(Mutex::new(hash_map))
+            regexes: Arc::new(hash_map)
         }
     }
 
     fn is_match(&self, key: RegexType, uri: &str) -> bool {
-        self.regexes.lock().unwrap().get(&key).unwrap().is_match(uri).unwrap()
+        self.regexes.get(&key).unwrap().is_match(uri).unwrap()
     }
 
     pub fn get_uri_scope(&self, host: &str, uri: &str) -> Option<UriScope> {
