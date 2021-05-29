@@ -119,8 +119,8 @@ pub enum Command {
     },
     CrawlDomainCommand {
         url: String,
-        last_crawled_timestamp: u64,
         response_channel: mpsc::Sender<Page>,
+        last_crawled_timestamp: u64,
     },
 }
 
