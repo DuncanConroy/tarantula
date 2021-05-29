@@ -6,6 +6,7 @@ use scraper::{Html, Node};
 
 use linkresult::{Link, LinkTypeChecker, UriResult};
 
+#[derive(Debug)]
 pub struct DomParser {
     link_type_checker: Arc<LinkTypeChecker>,
 }

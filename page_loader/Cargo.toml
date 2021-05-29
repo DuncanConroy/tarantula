@@ -19,6 +19,7 @@ log = "0.4.14"
 log4rs = "1.0.0"
 num_cpus = "1.13.0"
 tokio = { version = "^1", features = ["full"] }
+uuid = { version = "0.8.2", features = ["v4"] }
 
 [dev-dependencies]
 faux = "^0.1"

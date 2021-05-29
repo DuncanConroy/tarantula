@@ -5,7 +5,7 @@ use clap::load_yaml;
 use log::{info, trace};
 use tokio::sync::mpsc;
 
-use page_loader::page_loader_service::Command::LoadPage;
+use page_loader::page_loader_service::Command::{CrawlDomainCommand};
 use page_loader::page_loader_service::PageLoaderService;
 use tarantula_core::core::{DynResult, RunConfig};
 
@@ -50,8 +50,7 @@ async fn process() {
     let num_cpus = num_cpus::get();
     let tx = PageLoaderService::init();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
-    // PrepareForHostCommand?
-    let send_result = tx.send(LoadPage { url: run_config.url, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
+    let send_result = tx.send(CrawlDomainCommand { url: run_config.url, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
 
     let manager = tokio::spawn(async move {
         while let Some(page) = resp_rx.recv().await {

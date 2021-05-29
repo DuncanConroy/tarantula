@@ -9,7 +9,7 @@ pub use uri_result::*;
 pub mod uri_result;
 pub mod uri_service;
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 enum RegexType {
     Anchor,
     DifferentSubdomain,
@@ -21,6 +21,7 @@ enum RegexType {
     UnknownPrefix,
 }
 
+#[derive(Debug)]
 pub struct LinkTypeChecker {
     regexes: Arc<HashMap<RegexType, Regex>>,
 }
