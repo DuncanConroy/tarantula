@@ -43,6 +43,8 @@ pub struct PageLoaderService {
     // CrawlDomainCommand -> legt task context in hashmap an
     // neuer garbage collection thread schaut regelmaessig, wann das letzte LoadPageCommand fuer den entpsrechenden task (uuid) angenommen wurde
     // und nach gewisser zeit (durchschnittscrawlzeit * 2) wird der taskcontext geschlossen
+
+    // zwei response types (enum) im channel - 1. initial mit uuid, um mittels webserver zu returnen. 2. page_response zum senden an pubsub
 }
 
 impl PageLoaderService {
