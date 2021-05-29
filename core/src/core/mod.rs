@@ -66,9 +66,9 @@ impl RunConfig {
 
 struct AppContext {
     root_uri: String,
-    link_type_checker: Arc<Mutex<LinkTypeChecker>>,
-    dom_parser: Arc<Mutex<DomParser>>,
-    uri_service: Arc<Mutex<UriService>>,
+    link_type_checker: Arc<LinkTypeChecker>,
+    dom_parser: Arc<DomParser>,
+    uri_service: Arc<UriService>,
 }
 
 unsafe impl Send for AppContext {}
@@ -77,9 +77,9 @@ impl AppContext {
     pub fn new(uri: String) -> AppContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let host = hyper_uri.host().unwrap();
-        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(host)));
-        let dom_parser = Arc::new(Mutex::new(DomParser::new(link_type_checker.clone())));
-        let uri_service = Arc::new(Mutex::new(UriService::new(link_type_checker.clone())));
+        let link_type_checker = Arc::new(LinkTypeChecker::new(host));
+        let dom_parser = Arc::new(DomParser::new(link_type_checker.clone()));
+        let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         AppContext {
             root_uri: uri,
             link_type_checker,
@@ -92,7 +92,7 @@ impl AppContext {
 pub async fn init(run_config: RunConfig, tx: Sender<Page>) -> Option<Page> {
     let uri = run_config.url.clone();
     let app_context = Arc::new(Mutex::new(AppContext::new(uri.clone())));
-    let protocol = app_context.lock().unwrap().link_type_checker.lock().unwrap().get_uri_protocol("", &uri);
+    let protocol = app_context.lock().unwrap().link_type_checker.get_uri_protocol("", &uri);
     if let None = protocol {
         error!("Invalid protocol {:?} in uri {}", protocol, uri);
         process::exit(1)
@@ -116,7 +116,7 @@ pub async fn init(run_config: RunConfig, tx: Sender<Page>) -> Option<Page> {
 }
 
 #[async_recursion]
-async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maximum_redirects: u8, parent_uri: &Option<String>, uri_service: Arc<Mutex<UriService>>) -> DynResult<(Uri, Response<Body>)> {
+async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maximum_redirects: u8, parent_uri: &Option<String>, uri_service: Arc<UriService>) -> DynResult<(Uri, Response<Body>)> {
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
 
@@ -133,7 +133,7 @@ async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maxi
         trace!("HEAD for {}: {:?}", uri, response.headers());
         if current_redirect < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
-                let adjusted_uri = uri_service.lock().unwrap().form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap(), parent_uri);
+                let adjusted_uri = uri_service.form_full_url(uri.scheme_str().unwrap(), location_header.to_str().unwrap(), uri.host().unwrap(), parent_uri);
                 debug!("Following redirect {}", adjusted_uri);
                 let response = fetch_head(adjusted_uri, ignore_redirects, current_redirect + 1, maximum_redirects, parent_uri, uri_service.clone()).await;
                 return response;
@@ -144,10 +144,10 @@ async fn fetch_head(uri: Uri, ignore_redirects: bool, current_redirect: u8, maxi
     }
 }
 
-async fn fetch_page(mut page: &mut Page, uri: Uri, run_config: &RunConfig, host: String, protocol: String, uri_service: Arc<Mutex<UriService>>) -> DynResult<()> {
+async fn fetch_page(mut page: &mut Page, uri: Uri, run_config: &RunConfig, host: String, protocol: String, uri_service: Arc<UriService>) -> DynResult<()> {
     page.response_timings.overall_start_time = Utc::now();
     debug!("URI: {}", page.link.uri);
-    let adjusted_uri = uri_service.lock().unwrap().form_full_url(&protocol, uri.path(), &host, &page.parent_uri);
+    let adjusted_uri = uri_service.form_full_url(&protocol, uri.path(), &host, &page.parent_uri);
     trace!("Adjusted URI: {}", adjusted_uri);
 
     let https = HttpsConnector::new();
@@ -281,8 +281,8 @@ async fn recursive_load_page_and_get_links(
     }).await?
 }
 
-fn prepare_item_url(load_page_arguments: &LoadPageArguments, uri_service: Arc<Mutex<UriService>>) -> Uri {
-    uri_service.lock().unwrap().form_full_url(
+fn prepare_item_url(load_page_arguments: &LoadPageArguments, uri_service: Arc<UriService>) -> Uri {
+    uri_service.form_full_url(
         &load_page_arguments.protocol,
         &load_page_arguments.page.link.uri,
         &load_page_arguments.host,
@@ -311,7 +311,7 @@ async fn find_links_to_visit(
         }
 
         let uri_result: UriResult =
-            app_context.lock().unwrap().dom_parser.lock().unwrap().get_links(&protocol, host, item_body).unwrap();
+            app_context.lock().unwrap().dom_parser.get_links(&protocol, host, item_body).unwrap();
         page_to_process.response_timings.parse_complete_time = Some(uri_result.parse_complete_time);
 
         let result: Vec<Link> = if same_domain_only {
@@ -332,14 +332,13 @@ async fn find_links_to_visit(
     //}).await?
 }
 
-fn get_same_domain_links(source_domain: &str, links: &Vec<Link>, link_type_checker: Arc<Mutex<LinkTypeChecker>>) -> Vec<Link> {
+fn get_same_domain_links(source_domain: &str, links: &Vec<Link>, link_type_checker: Arc<LinkTypeChecker>) -> Vec<Link> {
     let mut cloned_links = links.clone();
     cloned_links.sort_by(|a, b| a.uri.cmp(&b.uri));
     cloned_links.dedup_by(|a, b| a.uri.eq(&b.uri));
-    let locked_type_checker = link_type_checker.lock().unwrap();
     cloned_links
         .iter()
-        .map(|it| (it, locked_type_checker.get_uri_scope(source_domain, it.uri.as_str())))
+        .map(|it| (it, link_type_checker.get_uri_scope(source_domain, it.uri.as_str())))
         .filter_map(|it| match it.1 {
             Some(uri_result::UriScope::Root)
             | Some(uri_result::UriScope::SameDomain)
@@ -392,7 +391,7 @@ mod tests {
             "https://faq.example.com/",
         ];
 
-        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new("example.com")));
+        let link_type_checker = Arc::new(LinkTypeChecker::new("example.com"));
         let result = get_same_domain_links("example.com", &str_to_links(all_links()), link_type_checker);
 
         assert_eq!(result.len(), 8, "{:?}\n{:?}", result, sorted_expected);

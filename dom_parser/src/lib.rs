@@ -7,12 +7,12 @@ use scraper::{Html, Node};
 use linkresult::{Link, LinkTypeChecker, UriResult};
 
 pub struct DomParser {
-    link_type_checker: Arc<Mutex<LinkTypeChecker>>,
+    link_type_checker: Arc<LinkTypeChecker>,
 }
 
 impl DomParser {
-    pub fn new(link_type_checker: Arc<Mutex<LinkTypeChecker>>)->DomParser {
-        DomParser{
+    pub fn new(link_type_checker: Arc<LinkTypeChecker>) -> DomParser {
+        DomParser {
             link_type_checker,
         }
     }
@@ -37,7 +37,6 @@ impl DomParser {
         node: Tree<Node>,
     ) -> Vec<Link> {
         let link_attribute_identifiers = vec!["href", "src", "data-src"];
-        let link_type_checker = self.link_type_checker.lock().unwrap();
         node.values()
             .filter_map(|current_node| {
                 let (_, link) = current_node
@@ -46,8 +45,8 @@ impl DomParser {
                     .find(|attribute| link_attribute_identifiers.contains(&attribute.0))?;
                 Some(Link {
                     uri: link.trim().to_string(),
-                    scope: link_type_checker.get_uri_scope(&host, &link),
-                    protocol: link_type_checker.get_uri_protocol(&parent_protocol, &link),
+                    scope: self.link_type_checker.get_uri_scope(&host, &link),
+                    protocol: self.link_type_checker.get_uri_protocol(&parent_protocol, &link),
                     source_tag: Some(current_node.clone()),
                 })
             })
@@ -73,7 +72,7 @@ mod tests {
         let html_file = read_to_string(&d).unwrap();
 
         let host = "www.example.com";
-        let instance = DomParser::new(Arc::new(Mutex::new(LinkTypeChecker::new(host))));
+        let instance = DomParser::new(Arc::new(LinkTypeChecker::new(host)));
         let input = Html::parse_document(html_file.as_str());
         let result = instance.extract_links("https", host, input.tree);
         assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79

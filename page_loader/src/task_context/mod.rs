@@ -8,17 +8,17 @@ use linkresult::uri_service::UriService;
 
 pub struct TaskContext {
     task_config: TaskConfig,
-    dom_parser: Arc<Mutex<DomParser>>,
-    link_type_checker: Arc<Mutex<LinkTypeChecker>>,
-    uri_service: Arc<Mutex<UriService>>,
+    dom_parser: Arc<DomParser>,
+    link_type_checker: Arc<LinkTypeChecker>,
+    uri_service: Arc<UriService>,
 }
 
 impl TaskContext {
     pub fn init(uri: String) -> TaskContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
-        let link_type_checker = Arc::new(Mutex::new(LinkTypeChecker::new(hyper_uri.host().unwrap())));
-        let dom_parser = Arc::new(Mutex::new(DomParser::new(link_type_checker.clone())));
-        let uri_service = Arc::new(Mutex::new(UriService::new(link_type_checker.clone())));
+        let link_type_checker = Arc::new(LinkTypeChecker::new(hyper_uri.host().unwrap()));
+        let dom_parser = Arc::new(DomParser::new(link_type_checker.clone()));
+        let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         TaskContext {
             task_config: TaskConfig::new(uri),
             dom_parser,
