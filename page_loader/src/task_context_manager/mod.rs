@@ -47,18 +47,15 @@ impl TaskManager for DefaultTaskManager {
 }
 
 impl DefaultTaskManager {
-    fn run(manager_instance:Arc<Mutex<DefaultTaskManager>>, mut gc_timeout: Duration) {
+    fn run(manager_instance: Arc<Mutex<DefaultTaskManager>>, mut gc_timeout: Duration) {
         loop {
-            println!("schlafen./././");
             thread::sleep(gc_timeout);
 
-            println!("arbeiten");
             manager_instance.lock().unwrap().do_garbage_collection();
         }
     }
 
     fn do_garbage_collection(&mut self) {
-        println!("do_garbage_collection");
         self.tasks.lock().unwrap().retain(|_, value| { !value.can_be_garbage_collected() })
     }
 }
@@ -103,26 +100,39 @@ mod tests {
         let gc_timeout = 1u16;
         let task_manager = DefaultTaskManager::init(gc_timeout);
 
-        thread::spawn(move || {
-            let tm_clone = task_manager.clone();
-
+        tokio::spawn(async move {
             // when
-            println!("fooo");
-            tm_clone.lock().unwrap().add_task(task_context);
-            println!("bar");
+            task_manager.lock().unwrap().add_task(task_context);
 
             //then
-            let num_tasks = tm_clone.lock().unwrap().get_number_of_tasks();
+            let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
             assert_eq!(num_tasks, 1, "task was not added");
-            println!("test - added");
-            // tokio::spawn(async move {
-            //     tokio::time::sleep(Duration::from_secs(gc_timeout as u64 * 2)).await;
-                thread::sleep(Duration::from_secs(gc_timeout as u64 * 2));
-            println!("test - schlafen");
-                let num_tasks = tm_clone.lock().unwrap().get_number_of_tasks();
-                assert_eq!(num_tasks, 0, "task was not removed");
-            println!("test - done");
-            // }).await;
-        }).join();
+            tokio::time::sleep(Duration::from_secs(gc_timeout as u64 * 2)).await;
+            let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
+            assert_eq!(num_tasks, 0, "task was not removed");
+        }).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn added_task_context_does_not_get_garbage_collected_within_timeout() {
+        // given
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_can_be_garbage_collected().returning(|| false);
+        mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
+        let task_context = Arc::new(mock_task_context);
+        let gc_timeout = 1u16;
+        let task_manager = DefaultTaskManager::init(gc_timeout);
+
+        tokio::spawn(async move {
+            // when
+            task_manager.lock().unwrap().add_task(task_context);
+
+            //then
+            let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
+            assert_eq!(num_tasks, 1, "task was not added");
+            tokio::time::sleep(Duration::from_secs(gc_timeout as u64 * 2)).await;
+            let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
+            assert_eq!(num_tasks, 1, "task was not removed");
+        }).await.unwrap();
     }
 }
