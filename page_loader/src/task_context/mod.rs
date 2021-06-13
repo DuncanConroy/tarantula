@@ -16,7 +16,7 @@ pub trait TaskContextInit {
 pub trait TaskContext: Sync + Send + Debug {
     fn get_uuid_clone(&self) -> Uuid;
     fn get_config_clone(&self) -> TaskConfig;
-    fn get_url(&self)->String;
+    fn get_url(&self) -> String;
     fn get_last_load_page_command_received_instant(&self) -> Option<Instant>;
     fn can_be_garbage_collected(&self) -> bool;
 }
@@ -66,7 +66,7 @@ impl TaskContext for DefaultTaskContext {
         self.task_config.clone()
     }
 
-    fn get_url(&self)->String{self.task_config.uri.to_string()}
+    fn get_url(&self) -> String { self.task_config.uri.to_string() }
 
     fn get_last_load_page_command_received_instant(&self) -> Option<Instant> {
         self.last_load_page_command_received_instant
