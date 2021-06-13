@@ -7,13 +7,13 @@ use tokio::task::JoinHandle;
 
 use crate::task_context::TaskContext;
 
-trait TaskManager {
+pub trait TaskManager: Sync + Send {
     fn add_task(&mut self, task: Arc<dyn TaskContext>);
-    fn init(gc_timeout: u16) -> Arc<Mutex<Self>>;
+    fn init(gc_timeout: u16) -> Arc<Mutex<Self>> where Self: Sized;
     fn get_number_of_tasks(&self) -> usize;
 }
 
-struct DefaultTaskManager {
+pub struct DefaultTaskManager {
     // URL - TaskContext
     tasks: Arc<Mutex<HashMap<String, Arc<dyn TaskContext>>>>,
     // garbage collection timeout in seconds
@@ -35,7 +35,7 @@ impl TaskManager for DefaultTaskManager {
         let mut cloned_manager = manager.clone();
         thread::Builder::new()
             .name("DefaultTaskManager garbage collection".to_owned())
-            .spawn(move || DefaultTaskManager::run(cloned_manager,Duration::from_secs(gc_timeout as u64)))
+            .spawn(move || DefaultTaskManager::run(cloned_manager, Duration::from_secs(gc_timeout as u64)))
             .unwrap();
 
         manager
