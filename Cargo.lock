@@ -1765,12 +1765,12 @@ dependencies = [
     "log",
     "log4rs",
     "mockall",
- "mockall_double",
- "mocktopus",
- "num_cpus",
- "tarantula_core",
- "tokio 1.5.0",
- "uuid 0.8.2",
+    "mockall_double",
+    "mocktopus",
+    "num_cpus",
+    "tarantula_core",
+    "tokio 1.5.0",
+    "uuid 0.8.2",
 ]
 
 [[package]]
