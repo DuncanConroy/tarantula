@@ -11,11 +11,11 @@ use tarantula_core::core::page::Page;
 
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::page_loader_service::Command::LoadPage;
-use crate::task_context::{DefaultTaskContext, TaskContext, TaskContextInit};
+use crate::task_context::{DefaultTaskContext, FullTaskContext, TaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
 
 pub trait CommandFactory: Sync + Send {
-    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>, current_depth: u16) -> Box<dyn CrawlCommand>;
+    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn FullTaskContext>, current_depth: u16) -> Box<dyn CrawlCommand>;
 }
 
 pub struct PageCrawlCommandFactory;
@@ -27,7 +27,7 @@ impl PageCrawlCommandFactory {
 }
 
 impl CommandFactory for PageCrawlCommandFactory {
-    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>, current_depth: u16) -> Box<dyn CrawlCommand> {
+    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn FullTaskContext>, current_depth: u16) -> Box<dyn CrawlCommand> {
         Box::new(PageCrawlCommand::new(url, task_context, current_depth))
     }
 }
@@ -128,7 +128,7 @@ pub enum Command {
     LoadPage {
         url: String,
         response_channel: mpsc::Sender<Page>,
-        task_context: Arc<dyn TaskContext>,
+        task_context: Arc<dyn FullTaskContext>,
         current_depth: u16,
     },
     CrawlDomainCommand {
@@ -188,7 +188,7 @@ mod tests {
 
     struct StubPageCrawlCommand {
         url: String,
-        task_context: Arc<dyn TaskContext>,
+        task_context: Arc<dyn FullTaskContext>,
     }
 
     impl StubPageCrawlCommand {
@@ -204,7 +204,7 @@ mod tests {
             self.url.clone()
         }
 
-        async fn crawl(&self) -> Result<Option<PageResponse>, Error> {
+        async fn crawl(&self) -> Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone());
             if self.url != "https://inner" {
                 // if this is the initial crawl, we want to emulate additional links`
@@ -213,7 +213,7 @@ mod tests {
             Ok(Some(response))
         }
 
-        fn get_task_context(&self) -> Arc<dyn TaskContext> {
+        fn get_task_context(&self) -> Arc<dyn FullTaskContext> {
             self.task_context.clone()
         }
 
@@ -229,7 +229,7 @@ mod tests {
     }
 
     impl CommandFactory for StubFactory {
-        fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>, current_depth: u16) -> Box<dyn CrawlCommand> {
+        fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn FullTaskContext>, current_depth: u16) -> Box<dyn CrawlCommand> {
             Box::new(StubPageCrawlCommand::new(url))
         }
     }

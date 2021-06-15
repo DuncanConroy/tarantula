@@ -28,7 +28,9 @@ pub trait KnownLinks: Sync + Send + Debug {
     fn add_known_link(&self, link: String);
 }
 
-#[derive(Debug)]
+pub trait FullTaskContext: TaskContext + KnownLinks {}
+
+#[derive(Clone, Debug)]
 pub struct DefaultTaskContext {
     task_config: TaskConfig,
     dom_parser: Arc<DomParser>,
@@ -92,6 +94,8 @@ impl KnownLinks for DefaultTaskContext {
         self.all_known_links.lock().unwrap().push(link);
     }
 }
+
+impl FullTaskContext for DefaultTaskContext {}
 
 #[derive(Clone, Debug)]
 pub struct TaskConfig {
