@@ -12,6 +12,7 @@ tarantula_core = { path = "../core" }
 dom_parser = { path = "../dom_parser" }
 linkresult = { path = "../linkresult" }
 # external
+async-trait = "0.1.50"
 chrono = "0.4.19"
 hyper = { version = "0.14", features = ["full"] }
 hyper-tls = "0.5.0"

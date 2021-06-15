@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use async_trait::async_trait;
 use log::debug;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -14,7 +15,7 @@ use crate::task_context::{DefaultTaskContext, TaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
 
 pub trait CommandFactory: Sync + Send {
-    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>) -> Box<dyn CrawlCommand>;
+    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>, current_depth: u16) -> Box<dyn CrawlCommand>;
 }
 
 pub struct PageCrawlCommandFactory;
@@ -26,8 +27,8 @@ impl PageCrawlCommandFactory {
 }
 
 impl CommandFactory for PageCrawlCommandFactory {
-    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>) -> Box<dyn CrawlCommand> {
-        Box::new(PageCrawlCommand::new(url, task_context))
+    fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>, current_depth: u16) -> Box<dyn CrawlCommand> {
+        Box::new(PageCrawlCommand::new(url, task_context, current_depth))
     }
 }
 
@@ -76,12 +77,12 @@ impl PageLoaderService {
         let _manager = tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 match event {
-                    Command::LoadPage { url, response_channel, task_context } => {
-                        debug!("received LoadPage command with url: {} on thread {:?}", url, thread::current().name());
+                    Command::LoadPage { url, response_channel, task_context, current_depth } => {
+                        debug!("received LoadPage command with url: {} on thread {:?}, depth: {}", url, thread::current().name(), current_depth);
                         let tx_task = tx_clone.clone();
                         let local_command_factory = arc_command_factory.clone();
                         tokio::spawn(async move {
-                            let page_crawl_command = local_command_factory.create_page_crawl_command(url, task_context);
+                            let page_crawl_command = local_command_factory.create_page_crawl_command(url, task_context, current_depth);
                             do_load(response_channel, page_crawl_command, tx_task).await
                         }).await.expect("Problem with spawned worker thread for LoadPageCommand");
                     }
@@ -89,7 +90,7 @@ impl PageLoaderService {
                         debug!("received CrawlDomainCommand with url: {} on thread {:?}", url, thread::current().name());
                         let task_context = Arc::new(DefaultTaskContext::init(url.clone()));
                         arc_page_loader_service_clone.task_manager.lock().unwrap().add_task(task_context.clone());
-                        tx_clone.send(LoadPage { url, response_channel, task_context: task_context.clone() }).await;
+                        tx_clone.send(LoadPage { url, response_channel, task_context: task_context.clone(), current_depth: 0 }).await;
                     }
                 }
             }
@@ -108,17 +109,19 @@ async fn do_load(response_channel: Sender<Page>, page_crawl_command: Box<dyn Cra
     // let task_context = task_context::init(url);
 
     // new approach
-    let crawl_result = page_crawl_command.crawl();
-    let task_context = page_crawl_command.get_task_context();
-    if crawl_result.links.is_some() {
-        for link in crawl_result.links.unwrap() {
-            let resp = response_channel.clone();
-            tx.send(LoadPage { url: String::from(link.uri), response_channel: resp, task_context: task_context.clone() }).await;
+    // TODO: error handling
+    if let Ok(Some(crawl_result)) = page_crawl_command.crawl().await {
+        let task_context = page_crawl_command.get_task_context();
+        if crawl_result.links.is_some() {
+            for link in crawl_result.links.unwrap() {
+                let resp = response_channel.clone();
+                tx.send(LoadPage { url: String::from(link.uri), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 }).await;
+            }
         }
-    }
 
-    let page_result = Page::new_root(url.clone(), Some(UriProtocol::HTTPS));
-    response_channel.send(page_result).await.expect("Could not send result to response channel");
+        let page_result = Page::new_root(url.clone(), Some(UriProtocol::HTTPS));
+        response_channel.send(page_result).await.expect("Could not send result to response channel");
+    }
 }
 
 pub enum Command {
@@ -126,6 +129,7 @@ pub enum Command {
         url: String,
         response_channel: mpsc::Sender<Page>,
         task_context: Arc<dyn TaskContext>,
+        current_depth: u16,
     },
     CrawlDomainCommand {
         url: String,
@@ -136,9 +140,11 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Error;
+
     use linkresult::Link;
 
-    use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
+    use crate::commands::page_crawl_command::CrawlCommand;
     use crate::page_loader_service::*;
     use crate::page_loader_service::Command::{CrawlDomainCommand, LoadPage};
     use crate::page_response::PageResponse;
@@ -171,7 +177,7 @@ mod tests {
         let task_context = Arc::new(DefaultTaskContext::init(String::from("https://example.com")));
 
         // when
-        let send_result = tx.send(LoadPage { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone() }).await;
+        let send_result = tx.send(LoadPage { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
 
         // then
         assert_eq!(true, send_result.is_ok());
@@ -192,23 +198,26 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl CrawlCommand for StubPageCrawlCommand {
         fn get_url_clone(&self) -> String {
             self.url.clone()
         }
 
-        fn crawl(&self) -> PageResponse {
+        async fn crawl(&self) -> Result<Option<PageResponse>, Error> {
             let mut response = PageResponse::new(self.url.clone());
             if self.url != "https://inner" {
                 // if this is the initial crawl, we want to emulate additional links`
                 response.links = Some(vec![Link::from_str("https://inner")]);
             }
-            response
+            Ok(Some(response))
         }
 
         fn get_task_context(&self) -> Arc<dyn TaskContext> {
             self.task_context.clone()
         }
+
+        fn get_current_depth(&self) -> u16 { 1 }
     }
 
     struct StubFactory;
@@ -220,7 +229,7 @@ mod tests {
     }
 
     impl CommandFactory for StubFactory {
-        fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>) -> Box<dyn CrawlCommand> {
+        fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn TaskContext>, current_depth: u16) -> Box<dyn CrawlCommand> {
             Box::new(StubPageCrawlCommand::new(url))
         }
     }
@@ -228,13 +237,13 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn triggers_additional_load_commands_for_subpages() {
         // given
-        let mut stub_page_crawl_command_factory = StubFactory::new();
+        let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
         let task_context = Arc::new(DefaultTaskContext::init(String::from("https://example.com")));
 
         // when
-        let send_result = tx.send(LoadPage { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone() }).await;
+        let send_result = tx.send(LoadPage { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
 
         // then
         assert_eq!(true, send_result.is_ok());

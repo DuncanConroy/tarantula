@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
-
-use tokio::task::JoinHandle;
+use std::time::Duration;
 
 use crate::task_context::TaskContext;
 
@@ -32,7 +30,7 @@ impl TaskManager for DefaultTaskManager {
                 gc_timeout,
             }));
 
-        let mut cloned_manager = manager.clone();
+        let cloned_manager = manager.clone();
         thread::Builder::new()
             .name("DefaultTaskManager garbage collection".to_owned())
             .spawn(move || DefaultTaskManager::run(cloned_manager, Duration::from_secs(gc_timeout as u64)))
@@ -62,9 +60,8 @@ impl DefaultTaskManager {
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::BorrowMut;
     use std::fmt::{Debug, Formatter, Result};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     use mockall::*;
     use tokio::time::Duration;
@@ -80,6 +77,8 @@ mod tests {
         impl TaskContext for MyTaskContext {
             fn get_uuid_clone(&self) -> Uuid;
             fn get_config_clone(&self) -> TaskConfig;
+            fn get_config_ref(&self) -> &TaskConfig;
+            fn get_config_mut(&mut self) -> &mut TaskConfig;
             fn get_url(&self)->String;
             fn get_last_load_page_command_received_instant(&self) -> Option<Instant>;
             fn can_be_garbage_collected(&self) -> bool;
