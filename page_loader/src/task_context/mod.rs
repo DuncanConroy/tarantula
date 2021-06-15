@@ -16,6 +16,8 @@ pub trait TaskContextInit {
 pub trait TaskContext: Sync + Send + Debug {
     fn get_uuid_clone(&self) -> Uuid;
     fn get_config_clone(&self) -> TaskConfig;
+    fn get_config_ref(&self) -> &TaskConfig;
+    fn get_config_mut(&mut self) -> &mut TaskConfig;
     fn get_url(&self) -> String;
     fn get_last_load_page_command_received_instant(&self) -> Option<Instant>;
     fn can_be_garbage_collected(&self) -> bool;
@@ -66,6 +68,10 @@ impl TaskContext for DefaultTaskContext {
         self.task_config.clone()
     }
 
+    fn get_config_ref(&self) -> &TaskConfig { &self.task_config }
+
+    fn get_config_mut(&mut self) -> &mut TaskConfig { &mut self.task_config }
+
     fn get_url(&self) -> String { self.task_config.uri.to_string() }
 
     fn get_last_load_page_command_received_instant(&self) -> Option<Instant> {
@@ -91,8 +97,8 @@ impl KnownLinks for DefaultTaskContext {
 pub struct TaskConfig {
     pub uri: Uri,
     pub ignore_redirects: bool,
-    pub maximum_redirects: u8,
-    pub maximum_depth: u8,
+    pub maximum_redirects: u16,
+    pub maximum_depth: u16,
     pub ignore_robots_txt: bool,
     pub keep_html_in_memory: bool,
     pub user_agent: String,
