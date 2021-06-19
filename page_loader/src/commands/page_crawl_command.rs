@@ -96,6 +96,18 @@ mod tests {
         }
     }
 
+    fn get_default_task_config() -> Arc<Mutex<TaskConfig>> {
+        Arc::new(Mutex::new(TaskConfig {
+            uri: Default::default(),
+            ignore_redirects: false,
+            maximum_redirects: 0,
+            maximum_depth: 16,
+            ignore_robots_txt: false,
+            keep_html_in_memory: false,
+            user_agent: "".to_string(),
+        }))
+    }
+
     #[tokio::test]
     async fn will_not_crawl_if_max_depth_reached() {
         // given: a task context with maximum_depth > 0
@@ -103,15 +115,8 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         let url_clone = url.clone();
         mock_task_context.expect_get_url().return_const(url_clone);
-        let config = Arc::new(Mutex::new(TaskConfig {
-            uri: Default::default(),
-            ignore_redirects: false,
-            maximum_redirects: 0,
-            maximum_depth: 1,
-            ignore_robots_txt: false,
-            keep_html_in_memory: false,
-            user_agent: "".to_string(),
-        }));
+        let config = get_default_task_config();
+        config.lock().unwrap().maximum_depth = 1;
         mock_task_context.expect_get_config().return_const(config.clone());
 
         // when: invoked with a current_depth > 0 && > maximum_depth
@@ -129,15 +134,8 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_url().return_const(url.clone());
         mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![])));
-        let config = Arc::new(Mutex::new(TaskConfig {
-            uri: Default::default(),
-            ignore_redirects: false,
-            maximum_redirects: 0,
-            maximum_depth: 0,
-            ignore_robots_txt: false,
-            keep_html_in_memory: false,
-            user_agent: "".to_string(),
-        }));
+        let config = get_default_task_config();
+        config.lock().unwrap().maximum_depth = 0;
         mock_task_context.expect_get_config().return_const(config.clone());
 
         // when: invoked with a current_depth > 0
@@ -154,15 +152,7 @@ mod tests {
         let url = String::from("https://example.com");
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_url().return_const(url.clone());
-        let config = Arc::new(Mutex::new(TaskConfig {
-            uri: Default::default(),
-            ignore_redirects: false,
-            maximum_redirects: 0,
-            maximum_depth: 16,
-            ignore_robots_txt: false,
-            keep_html_in_memory: false,
-            user_agent: "".to_string(),
-        }));
+        let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
 
@@ -180,15 +170,7 @@ mod tests {
         let url = String::from("https://example.com");
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_url().return_const(url.clone());
-        let config = Arc::new(Mutex::new(TaskConfig {
-            uri: Default::default(),
-            ignore_redirects: false,
-            maximum_redirects: 0,
-            maximum_depth: 16,
-            ignore_robots_txt: false,
-            keep_html_in_memory: false,
-            user_agent: "".to_string(),
-        }));
+        let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
 

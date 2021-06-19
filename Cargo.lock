@@ -930,8 +930,8 @@ dependencies = [
     "pin-project-lite",
     "pin-utils",
     "proc-macro-hack",
- "proc-macro-nested",
- "slab",
+    "proc-macro-nested",
+    "slab",
 ]
 
 [[package]]
