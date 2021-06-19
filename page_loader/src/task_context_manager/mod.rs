@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::task_context::TaskContext;
+use crate::task_context::task_context::TaskContext;
 
 pub trait TaskManager: Sync + Send {
     fn add_task(&mut self, task: Arc<dyn TaskContext>);
@@ -68,7 +68,7 @@ mod tests {
     use tokio::time::Instant;
     use uuid::Uuid;
 
-    use crate::task_context::{TaskConfig, TaskContext};
+    use crate::task_context::task_context::{TaskConfig, TaskContext};
 
     use super::*;
 
@@ -76,9 +76,7 @@ mod tests {
         MyTaskContext {}
         impl TaskContext for MyTaskContext {
             fn get_uuid_clone(&self) -> Uuid;
-            fn get_config_clone(&self) -> TaskConfig;
-            fn get_config_ref(&self) -> &TaskConfig;
-            fn get_config_mut(&mut self) -> &mut TaskConfig;
+            fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
             fn get_url(&self)->String;
             fn get_last_load_page_command_received_instant(&self) -> Option<Instant>;
             fn can_be_garbage_collected(&self) -> bool;
