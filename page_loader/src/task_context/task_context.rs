@@ -95,8 +95,8 @@ impl KnownLinks for DefaultTaskContext {
 }
 
 impl RobotsTxt for DefaultTaskContext {
-    fn can_access(&self, user_agent: &str, item_uri: &Uri) -> bool {
-        self.robots_service.clone().can_access(user_agent, item_uri)
+    fn can_access(&self, item_uri: &str) -> bool {
+        self.robots_service.clone().can_access(item_uri)
     }
 
     fn get_crawl_delay(&self) -> Option<Duration> {
