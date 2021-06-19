@@ -2,10 +2,10 @@ use std::str::FromStr;
 
 use clap::App;
 use clap::load_yaml;
-use log::{info, trace};
+use log::info;
 use tokio::sync::mpsc;
 
-use page_loader::page_loader_service::Command::{CrawlDomainCommand};
+use page_loader::page_loader_service::Command::CrawlDomainCommand;
 use page_loader::page_loader_service::PageLoaderService;
 use tarantula_core::core::{DynResult, RunConfig};
 

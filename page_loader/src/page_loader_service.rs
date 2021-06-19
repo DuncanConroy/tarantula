@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use async_trait::async_trait;
 use log::debug;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -11,7 +10,7 @@ use tarantula_core::core::page::Page;
 
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::page_loader_service::Command::LoadPage;
-use crate::task_context::{DefaultTaskContext, FullTaskContext, TaskContext, TaskContextInit};
+use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
 
 pub trait CommandFactory: Sync + Send {
@@ -140,7 +139,7 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Error;
+    use async_trait::async_trait;
 
     use linkresult::Link;
 
@@ -148,7 +147,7 @@ mod tests {
     use crate::page_loader_service::*;
     use crate::page_loader_service::Command::{CrawlDomainCommand, LoadPage};
     use crate::page_response::PageResponse;
-    use crate::task_context::{DefaultTaskContext, TaskContextInit};
+    use crate::task_context::task_context::{DefaultTaskContext, TaskContextInit};
 
     #[tokio::test]
     async fn creates_task_for_crawl_domain_command() {
@@ -229,6 +228,7 @@ mod tests {
     }
 
     impl CommandFactory for StubFactory {
+        #[allow(unused)]
         fn create_page_crawl_command(&self, url: String, task_context: Arc<dyn FullTaskContext>, current_depth: u16) -> Box<dyn CrawlCommand> {
             Box::new(StubPageCrawlCommand::new(url))
         }

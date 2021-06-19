@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use crate::task_context::{FullTaskContext, KnownLinks, TaskContext};
+use crate::task_context::task_context::FullTaskContext;
 
 #[derive(Clone, Debug)]
 pub struct PageRequest {

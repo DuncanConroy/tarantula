@@ -1,11 +1,10 @@
-use std::io::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use crate::page_request::PageRequest;
 use crate::page_response::PageResponse;
-use crate::task_context::{DefaultTaskContext, FullTaskContext, KnownLinks, TaskContext};
+use crate::task_context::task_context::FullTaskContext;
 
 #[async_trait]
 pub trait CrawlCommand: Sync + Send {
@@ -32,10 +31,15 @@ impl CrawlCommand for PageCrawlCommand {
     fn get_url_clone(&self) -> String { self.request_object.url.clone() }
 
     async fn crawl(&self) -> Result<Option<PageResponse>, String> {
-        if self.request_object.task_context.get_config_ref().maximum_depth > 0 &&
-            self.current_depth > self.request_object.task_context.get_config_ref().maximum_depth {
+        let config = self.request_object.task_context.get_config().clone();
+        let config_locked = config.lock().unwrap();
+        if config_locked.maximum_depth > 0 &&
+            self.current_depth > config_locked.maximum_depth {
             return Ok(None);
         }
+        // at this point, the config isn't required anymore and can therefore be dropped
+        drop(config_locked);
+        drop(config);
 
         if self.request_object.task_context.get_all_known_links().lock().unwrap().contains(&self.request_object.url) {
             return Ok(None);
@@ -53,19 +57,65 @@ impl CrawlCommand for PageCrawlCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::fmt::{Debug, Formatter, Result};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use hyper::Uri;
+    use mockall::*;
+    use tokio::time::Instant;
+    use uuid::Uuid;
 
     use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
-    use crate::task_context::{DefaultTaskContext, KnownLinks, TaskContext, TaskContextInit};
+    use crate::task_context::robots_service::RobotsTxt;
+    use crate::task_context::task_context::{DefaultTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit};
+
+    use super::*;
+
+    mock! {
+        MyTaskContext {}
+        impl TaskContext for MyTaskContext {
+            fn get_uuid_clone(&self) -> Uuid;
+            fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
+            fn get_url(&self)->String;
+            fn get_last_load_page_command_received_instant(&self) -> Option<Instant>;
+            fn can_be_garbage_collected(&self) -> bool;
+        }
+        impl KnownLinks for MyTaskContext{
+            fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
+            fn add_known_link(&self, link: String);
+        }
+        impl RobotsTxt for MyTaskContext{
+            fn can_access(&self, user_agent: &str, item_uri: &Uri) -> bool;
+            fn get_crawl_delay(&self) -> Option<Duration>;
+        }
+        impl FullTaskContext for MyTaskContext{}
+
+        impl Debug for MyTaskContext {
+            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> Result;
+        }
+    }
 
     #[tokio::test]
     async fn will_not_crawl_if_max_depth_reached() {
         // given: a task context with maximum_depth > 0
-        let mut task_context = DefaultTaskContext::init(String::from("https://example.com"));
-        task_context.get_config_mut().maximum_depth = 1;
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        let url_clone = url.clone();
+        mock_task_context.expect_get_url().return_const(url_clone);
+        let config = Arc::new(Mutex::new(TaskConfig {
+            uri: Default::default(),
+            ignore_redirects: false,
+            maximum_redirects: 0,
+            maximum_depth: 1,
+            ignore_robots_txt: false,
+            keep_html_in_memory: false,
+            user_agent: "".to_string(),
+        }));
+        mock_task_context.expect_get_config().return_const(config.clone());
 
         // when: invoked with a current_depth > 0 && > maximum_depth
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(task_context), 2);
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 2);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect none
@@ -75,11 +125,23 @@ mod tests {
     #[tokio::test]
     async fn will_crawl_if_max_depth_is_zero() {
         // given: a task context with maximum_depth = 0
-        let mut task_context = DefaultTaskContext::init(String::from("https://example.com"));
-        task_context.get_config_mut().maximum_depth = 0;
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_url().return_const(url.clone());
+        mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![])));
+        let config = Arc::new(Mutex::new(TaskConfig {
+            uri: Default::default(),
+            ignore_redirects: false,
+            maximum_redirects: 0,
+            maximum_depth: 0,
+            ignore_robots_txt: false,
+            keep_html_in_memory: false,
+            user_agent: "".to_string(),
+        }));
+        mock_task_context.expect_get_config().return_const(config.clone());
 
         // when: invoked with a current_depth > 0
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(task_context), 9000);
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 9000);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect some
@@ -89,11 +151,23 @@ mod tests {
     #[tokio::test]
     async fn will_not_crawl_if_url_is_known() {
         // given: a task context with a known link
-        let mut task_context = DefaultTaskContext::init(String::from("https://example.com"));
-        task_context.add_known_link("https://example.com".into());
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = Arc::new(Mutex::new(TaskConfig {
+            uri: Default::default(),
+            ignore_redirects: false,
+            maximum_redirects: 0,
+            maximum_depth: 16,
+            ignore_robots_txt: false,
+            keep_html_in_memory: false,
+            user_agent: "".to_string(),
+        }));
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
 
         // when: invoked with a known link
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(task_context), 1);
+        let page_crawl_command = PageCrawlCommand::new(url.clone(), Arc::new(mock_task_context), 1);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect none
@@ -103,13 +177,39 @@ mod tests {
     #[tokio::test]
     async fn will_crawl_if_url_is_unknown() {
         // given: a task context without the link known
-        let mut task_context = DefaultTaskContext::init(String::from("https://example.com"));
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = Arc::new(Mutex::new(TaskConfig {
+            uri: Default::default(),
+            ignore_redirects: false,
+            maximum_redirects: 0,
+            maximum_depth: 16,
+            ignore_robots_txt: false,
+            keep_html_in_memory: false,
+            user_agent: "".to_string(),
+        }));
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
 
         // when: invoked with a known link
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(task_context), 1);
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 1);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect some
         assert_eq!(crawl_result.unwrap().is_some(), true, "Should crawl, if url is unknown")
+    }
+
+    #[tokio::test]
+    async fn will_not_crawl_if_respecting_robots_txt() {
+        // given: a task context with robots_txt disallowing crawling
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_url().return_const(url.clone());
+        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+
+        // when: invoked with a restricted link
+
+        // then: expect none
     }
 }
