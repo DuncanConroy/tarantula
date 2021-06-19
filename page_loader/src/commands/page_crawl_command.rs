@@ -45,6 +45,10 @@ impl CrawlCommand for PageCrawlCommand {
             return Ok(None);
         }
 
+        if !self.request_object.task_context.can_access(&self.request_object.url) {
+            return Ok(None);
+        }
+
         Ok(Some(PageResponse::new(self.request_object.url.clone())))
     }
 
@@ -86,7 +90,7 @@ mod tests {
             fn add_known_link(&self, link: String);
         }
         impl RobotsTxt for MyTaskContext{
-            fn can_access(&self, user_agent: &str, item_uri: &Uri) -> bool;
+            fn can_access(&self, item_uri: &str) -> bool;
             fn get_crawl_delay(&self) -> Option<Duration>;
         }
         impl FullTaskContext for MyTaskContext{}
@@ -137,6 +141,7 @@ mod tests {
         let config = get_default_task_config();
         config.lock().unwrap().maximum_depth = 0;
         mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_can_access().returning(|_| true);
 
         // when: invoked with a current_depth > 0
         let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 9000);
@@ -173,6 +178,7 @@ mod tests {
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_can_access().returning(|_| true);
 
         // when: invoked with a known link
         let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 1);
@@ -183,15 +189,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn will_not_crawl_if_respecting_robots_txt() {
+    async fn will_not_crawl_if_url_is_forbidden_by_robots_txt() {
         // given: a task context with robots_txt disallowing crawling
         let url = String::from("https://example.com");
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_url().return_const(url.clone());
+        let config = get_default_task_config();
+        mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_can_access().returning(|_| false);
 
         // when: invoked with a restricted link
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 1);
+        let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect none
+        assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt")
     }
 }
