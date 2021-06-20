@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use futures::executor::block_on;
 use hyper::{Body, Client, Request, StatusCode, Uri};
 use hyper::header::USER_AGENT;
 use hyper_tls::HttpsConnector;
@@ -33,7 +32,7 @@ pub struct RobotsService {
 
 impl RobotsService {
     pub fn new(user_agent: String) -> RobotsService {
-        let mut instance = RobotsService {
+        let instance = RobotsService {
             robot_file_parser: Arc::new(Mutex::new(DefaultCachingMatcher::new(DefaultMatcher::default()))),
             uri: None,
             user_agent,
@@ -78,7 +77,7 @@ impl RobotsTxtInit for RobotsService {
             .expect("GET request builder");
 
         async {
-            let mut response = match client.request(request).await {
+            let response = match client.request(request).await {
                 Ok(res) => res,
                 Err(_) => {
                     let uri = self.uri.clone().unwrap().to_string();
