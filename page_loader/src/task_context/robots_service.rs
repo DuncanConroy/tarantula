@@ -131,12 +131,13 @@ impl Debug for RobotsService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mockall::*;
 
     #[test]
     fn can_not_access_on_disallow_all() {
         // given: a robots.txt with disallow_all = true
         let service = RobotsService::new("tarantula".into());
-        service.disallow_all.store(true, Ordering::Relaxed);
+        service.disallow_all.store(true, Ordering::Release);
 
         // when: can_access is invoked
         let can_access = service.can_access("https://example.com");
@@ -149,7 +150,22 @@ mod tests {
     fn can_access_on_allow_all(){
         // given: a robots.txt with allow_all = true
         let service = RobotsService::new("tarantula".into());
-        service.allow_all.store(true, Ordering::Relaxed);
+        service.disallow_all.store(false, Ordering::Release);
+        service.allow_all.store(true, Ordering::Release);
+
+        // when: can_access is invoked
+        let can_access = service.can_access("https://example.com");
+
+        // then: result is false
+        assert_eq!(can_access, true, "Should not crawl anything with disallow_all=true")
+    }
+
+    #[test]
+    fn disallow_all_precedes_allow_all(){
+        // given: a robots.txt with disallow_all = true and allow_all = true
+        let service = RobotsService::new("tarantula".into());
+        service.allow_all.store(true, Ordering::Release);
+        service.disallow_all.store(true, Ordering::Release);
 
         // when: can_access is invoked
         let can_access = service.can_access("https://example.com");
@@ -159,14 +175,17 @@ mod tests {
     }
 
     #[test]
-    fn disallow_all_precedes_allow_all(){
-        // given: a robots.txt with disallow_all = true and allow_all = true
-        let service = RobotsService::new("tarantula".into());
-        service.allow_all.store(true, Ordering::Relaxed);
-        service.disallow_all.store(true, Ordering::Relaxed);
+    fn can_access_if_only_robots_txt_permits(){
+        // given: a robots.txt which allows us access
+        let mut service = RobotsService::new("tarantula".into());
+        let robots_body = "user-agent: tarantula\n\
+                           disallow: /\n";
+        service.robot_file_parser.lock().unwrap().parse(robots_body);
+        service.allow_all.store(true, Ordering::Release);
+        service.disallow_all.store(true, Ordering::Release);
 
         // when: can_access is invoked
-        let can_access = service.can_access("https://example.com");
+        let can_access = service.can_access("https://example.com/some-otherwise-forbidden-deeplink");
 
         // then: result is false
         assert_eq!(can_access, false, "Should not crawl anything with disallow_all=true")
