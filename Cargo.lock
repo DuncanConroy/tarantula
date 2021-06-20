@@ -71,9 +71,9 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7d78656ba01f1b93024b7c3a0467f1608e4be67d725749fdcd7d2c7678fd7a2"
 dependencies = [
-    "proc-macro2",
-    "quote",
-    "syn",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -82,9 +82,9 @@ version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b98e84bbb4cbcdd97da190ba0c58a1bb0de2c1fdf67d159e192ed766aeca722"
 dependencies = [
-    "proc-macro2",
-    "quote",
-    "syn",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -836,13 +836,13 @@ version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7e43a803dae2fa37c1f6a8fe121e1f7bf9548b4dfc0522a42f34145dadfc27"
 dependencies = [
-    "futures-channel",
-    "futures-core",
-    "futures-executor",
-    "futures-io",
-    "futures-sink",
-    "futures-task",
-    "futures-util",
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
 ]
 
 [[package]]
@@ -851,8 +851,8 @@ version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e682a68b29a882df0545c143dc3646daefe80ba479bcdede94d5a703de2871e2"
 dependencies = [
-    "futures-core",
-    "futures-sink",
+ "futures-core",
+ "futures-sink",
 ]
 
 [[package]]
@@ -877,9 +877,9 @@ version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "badaa6a909fac9e7236d0620a2f57f7664640c56575b71a7552fbd68deafab79"
 dependencies = [
-    "futures-core",
-    "futures-task",
-    "futures-util",
+ "futures-core",
+ "futures-task",
+ "futures-util",
 ]
 
 [[package]]
@@ -894,11 +894,11 @@ version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4c40298486cdf52cc00cd6d6987892ba502c7656a16a4192a9992b1ccedd121"
 dependencies = [
-    "autocfg 1.0.1",
-    "proc-macro-hack",
-    "proc-macro2",
-    "quote",
-    "syn",
+ "autocfg 1.0.1",
+ "proc-macro-hack",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -919,19 +919,19 @@ version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "feb5c238d27e2bf94ffdfd27b2c29e3df4a68c4193bb6427384259e2bf191967"
 dependencies = [
-    "autocfg 1.0.1",
-    "futures-channel",
-    "futures-core",
-    "futures-io",
-    "futures-macro",
-    "futures-sink",
-    "futures-task",
-    "memchr",
-    "pin-project-lite",
-    "pin-utils",
-    "proc-macro-hack",
-    "proc-macro-nested",
-    "slab",
+ "autocfg 1.0.1",
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-macro",
+ "futures-sink",
+ "futures-task",
+ "memchr",
+ "pin-project-lite",
+ "pin-utils",
+ "proc-macro-hack",
+ "proc-macro-nested",
+ "slab",
 ]
 
 [[package]]
@@ -1753,25 +1753,25 @@ dependencies = [
 name = "page_loader"
 version = "0.1.0"
 dependencies = [
-    "async-trait",
-    "cargo-expand",
-    "chrono",
-    "dom_parser",
-    "faux",
-    "futures 0.3.15",
-    "hyper 0.14.4",
-    "hyper-tls 0.5.0",
-    "linkresult",
-    "log",
-    "log4rs",
-    "mockall",
-    "mockall_double",
-    "mocktopus",
-    "num_cpus",
-    "robotstxt-with-cache",
-    "tarantula_core",
-    "tokio 1.5.0",
-    "uuid 0.8.2",
+ "async-trait",
+ "cargo-expand",
+ "chrono",
+ "dom_parser",
+ "faux",
+ "futures 0.3.15",
+ "hyper 0.14.4",
+ "hyper-tls 0.5.0",
+ "linkresult",
+ "log",
+ "log4rs",
+ "mockall",
+ "mockall_double",
+ "mocktopus",
+ "num_cpus",
+ "robotstxt-with-cache",
+ "tarantula_core",
+ "tokio 1.5.0",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -2382,8 +2382,8 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0ff3fc3fbb7e0d7c2de0861baa7a92cc0a2348b1de88384009a1c0afe54f339"
 dependencies = [
-    "reqwest",
-    "url 1.7.2",
+ "reqwest",
+ "url 1.7.2",
 ]
 
 [[package]]
@@ -2834,21 +2834,21 @@ dependencies = [
 name = "tarantula_core"
 version = "0.1.0"
 dependencies = [
-    "async-recursion",
-    "chrono",
-    "clap",
-    "dom_parser",
-    "futures 0.3.15",
-    "hyper 0.14.4",
-    "hyper-tls 0.5.0",
-    "linkresult",
-    "log",
-    "log4rs",
-    "num_cpus",
-    "robotparser",
-    "testutils",
-    "tokio 1.5.0",
-    "tokio-stream",
+ "async-recursion",
+ "chrono",
+ "clap",
+ "dom_parser",
+ "futures 0.3.15",
+ "hyper 0.14.4",
+ "hyper-tls 0.5.0",
+ "linkresult",
+ "log",
+ "log4rs",
+ "num_cpus",
+ "robotparser",
+ "testutils",
+ "tokio 1.5.0",
+ "tokio-stream",
 ]
 
 [[package]]

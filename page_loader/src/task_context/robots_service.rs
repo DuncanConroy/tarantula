@@ -130,7 +130,45 @@ impl Debug for RobotsService {
 
 #[cfg(test)]
 mod tests {
-    fn test() {
-        todo!("needs tests!")
+    use super::*;
+
+    #[test]
+    fn can_not_access_on_disallow_all() {
+        // given: a robots.txt with disallow_all = true
+        let service = RobotsService::new("tarantula".into());
+        service.disallow_all.store(true, Ordering::Relaxed);
+
+        // when: can_access is invoked
+        let can_access = service.can_access("https://example.com");
+
+        // then: result is false
+        assert_eq!(can_access, false, "Should not crawl anything with disallow_all=true")
+    }
+
+    #[test]
+    fn can_access_on_allow_all(){
+        // given: a robots.txt with allow_all = true
+        let service = RobotsService::new("tarantula".into());
+        service.allow_all.store(true, Ordering::Relaxed);
+
+        // when: can_access is invoked
+        let can_access = service.can_access("https://example.com");
+
+        // then: result is false
+        assert_eq!(can_access, false, "Should not crawl anything with disallow_all=true")
+    }
+
+    #[test]
+    fn disallow_all_precedes_allow_all(){
+        // given: a robots.txt with disallow_all = true and allow_all = true
+        let service = RobotsService::new("tarantula".into());
+        service.allow_all.store(true, Ordering::Relaxed);
+        service.disallow_all.store(true, Ordering::Relaxed);
+
+        // when: can_access is invoked
+        let can_access = service.can_access("https://example.com");
+
+        // then: result is false
+        assert_eq!(can_access, false, "Should not crawl anything with disallow_all=true")
     }
 }
