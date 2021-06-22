@@ -82,8 +82,9 @@ mod tests {
             fn get_uuid_clone(&self) -> Uuid;
             fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
             fn get_url(&self)->String;
-            fn get_last_load_page_command_received_instant(&self) -> Option<Instant>;
-            fn can_be_garbage_collected(&self) -> bool;
+            fn get_last_command_received(&self) -> Instant;
+            fn set_last_command_received(&mut self, instant: Instant);
+            fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
         }
         impl KnownLinks for MyTaskContext{
             fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;

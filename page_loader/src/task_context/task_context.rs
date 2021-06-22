@@ -20,8 +20,9 @@ pub trait TaskContext: Sync + Send + Debug {
     fn get_uuid_clone(&self) -> Uuid;
     fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
     fn get_url(&self) -> String;
-    fn get_last_load_page_command_received_instant(&self) -> Option<Instant>;
-    fn can_be_garbage_collected(&self) -> bool;
+    fn get_last_command_received(&self) -> Instant;
+    fn set_last_command_received(&mut self, instant: Instant);
+    fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
 }
 
 pub trait KnownLinks: Sync + Send + Debug {
@@ -39,7 +40,7 @@ pub struct DefaultTaskContext {
     uri_service: Arc<UriService>,
     robots_service: Arc<dyn RobotsTxt>,
     uuid: Uuid,
-    last_load_page_command_received_instant: Option<Instant>,
+    last_command_received: Instant,
     all_known_links: Arc<Mutex<Vec<String>>>,
 }
 
@@ -53,6 +54,7 @@ impl TaskContextInit for DefaultTaskContext {
         let robots_service = Arc::new(RobotsService::new(task_config.lock().unwrap().user_agent.clone()));
         let uuid = Uuid::new_v4();
         let all_known_links = Arc::new(Mutex::new(vec![]));
+        let last_command_received= Instant::now();
         DefaultTaskContext {
             task_config,
             dom_parser,
@@ -60,7 +62,7 @@ impl TaskContextInit for DefaultTaskContext {
             uri_service,
             robots_service,
             uuid,
-            last_load_page_command_received_instant: None,
+            last_command_received,
             all_known_links,
         }
     }
@@ -75,12 +77,20 @@ impl TaskContext for DefaultTaskContext {
 
     fn get_url(&self) -> String { self.task_config.lock().unwrap().uri.to_string() }
 
-    fn get_last_load_page_command_received_instant(&self) -> Option<Instant> {
-        self.last_load_page_command_received_instant
+    fn get_last_command_received(&self) -> Instant {
+        self.last_command_received
     }
 
-    fn can_be_garbage_collected(&self) -> bool {
-        todo!()
+    fn set_last_command_received(&mut self, instant:Instant) {
+        self.last_command_received = instant;
+    }
+
+    fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool {
+        return if Instant::now() - self.last_command_received > Duration::from_millis(gc_timeout_ms) {
+                true
+            } else {
+                false
+            }
     }
 }
 
@@ -128,5 +138,38 @@ impl TaskConfig {
             keep_html_in_memory: false,
             user_agent: String::from("tarantula"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    #[test]
+    fn can_be_garbage_collected_false_by_default() {
+        // given: a usual task context
+        let gc_timeout_ms = 10;
+        let context = DefaultTaskContext::init("https://example.com".into());
+
+        // when: can_be_garbage_collected is invoked
+        let result = context.can_be_garbage_collected(gc_timeout_ms);
+
+        // then: expect false
+        assert_eq!(result, false, "TaskContext should not be garbage collectable at this point");
+    }
+
+    #[test]
+    fn can_be_garbage_collected_true_on_timeout() {
+        // given: a usual task context
+        let mut context = DefaultTaskContext::init("https://example.com".into());
+        let gc_timeout_ms = 10u64;
+
+        // when: can_be_garbage_collected is invoked after gc_timeout_ms * 2
+        thread::sleep(Duration::from_millis(gc_timeout_ms * 2u64));
+        let result = context.can_be_garbage_collected(gc_timeout_ms);
+
+        // then: expect true
+        assert_eq!(result, true, "TaskContext should be garbage collectable at this point");
     }
 }
