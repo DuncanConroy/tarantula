@@ -24,6 +24,28 @@ impl PageCrawlCommand {
     pub fn new(url: String, task_context: Arc<dyn FullTaskContext>, current_depth: u16) -> PageCrawlCommand {
         PageCrawlCommand { request_object: PageRequest::new(url, None, task_context), current_depth }
     }
+
+    fn verify_crawlability(&self) -> bool {
+        let config = self.request_object.task_context.get_config().clone();
+        let config_locked = config.lock().unwrap();
+        if config_locked.maximum_depth > 0 &&
+            self.current_depth > config_locked.maximum_depth {
+            return false;
+        }
+        // at this point, the config isn't required anymore and can therefore be dropped
+        drop(config_locked);
+        drop(config);
+
+        if self.request_object.task_context.get_all_known_links().lock().unwrap().contains(&self.request_object.url) {
+            return false;
+        }
+
+        if !self.request_object.task_context.can_access(&self.request_object.url) {
+            return false;
+        }
+
+        true
+    }
 }
 
 #[async_trait]
@@ -31,21 +53,7 @@ impl CrawlCommand for PageCrawlCommand {
     fn get_url_clone(&self) -> String { self.request_object.url.clone() }
 
     async fn crawl(&self) -> Result<Option<PageResponse>, String> {
-        let config = self.request_object.task_context.get_config().clone();
-        let config_locked = config.lock().unwrap();
-        if config_locked.maximum_depth > 0 &&
-            self.current_depth > config_locked.maximum_depth {
-            return Ok(None);
-        }
-        // at this point, the config isn't required anymore and can therefore be dropped
-        drop(config_locked);
-        drop(config);
-
-        if self.request_object.task_context.get_all_known_links().lock().unwrap().contains(&self.request_object.url) {
-            return Ok(None);
-        }
-
-        if !self.request_object.task_context.can_access(&self.request_object.url) {
+        if !self.verify_crawlability() {
             return Ok(None);
         }
 
