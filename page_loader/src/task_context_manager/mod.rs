@@ -6,21 +6,22 @@ use std::time::Duration;
 use crate::task_context::task_context::TaskContext;
 
 pub trait TaskManager: Sync + Send {
-    fn add_task(&mut self, task: Arc<dyn TaskContext>);
+    fn add_task(&mut self, task: Arc<Mutex<dyn TaskContext>>);
     fn init(gc_timeout_ms: u64) -> Arc<Mutex<Self>> where Self: Sized;
     fn get_number_of_tasks(&self) -> usize;
 }
 
 pub struct DefaultTaskManager {
     // URL - TaskContext
-    tasks: Arc<Mutex<HashMap<String, Arc<dyn TaskContext>>>>,
+    tasks: Arc<Mutex<HashMap<String, Arc<Mutex<dyn TaskContext>>>>>,
     // garbage collection timeout in seconds
     gc_timeout_ms: u64,
 }
 
 impl TaskManager for DefaultTaskManager {
-    fn add_task(&mut self, task: Arc<dyn TaskContext>) {
-        self.tasks.lock().unwrap().insert(task.get_url(), task);
+    fn add_task(&mut self, task: Arc<Mutex<dyn TaskContext>>) {
+        let task_clone = task.clone();
+        self.tasks.lock().unwrap().insert(task_clone.lock().unwrap().get_url(), task_clone.clone());
     }
 
     fn init(gc_timeout_ms: u64) -> Arc<Mutex<Self>> {
@@ -54,7 +55,7 @@ impl DefaultTaskManager {
     }
 
     fn do_garbage_collection(&mut self) {
-        self.tasks.lock().unwrap().retain(|_, value| { !value.can_be_garbage_collected(self.gc_timeout_ms) })
+        self.tasks.lock().unwrap().retain(|_, value| { !value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) })
     }
 }
 
@@ -94,7 +95,7 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_can_be_garbage_collected().returning(|gc_timeout_ms: u64| true);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
-        let task_context = Arc::new(mock_task_context);
+        let task_context = Arc::new(Mutex::new(mock_task_context));
         let gc_timeout_ms = 1u64;
         let task_manager = DefaultTaskManager::init(gc_timeout_ms);
 
@@ -117,7 +118,7 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_can_be_garbage_collected().returning(|gc_timeout_ms: u64| false);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
-        let task_context = Arc::new(mock_task_context);
+        let task_context = Arc::new(Mutex::new(mock_task_context));
         let gc_timeout_ms = 1u64;
         let task_manager = DefaultTaskManager::init(gc_timeout_ms);
 

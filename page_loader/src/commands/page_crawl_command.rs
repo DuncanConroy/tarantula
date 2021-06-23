@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
@@ -10,7 +10,7 @@ use crate::task_context::task_context::FullTaskContext;
 pub trait CrawlCommand: Sync + Send {
     fn get_url_clone(&self) -> String;
     async fn crawl(&self) -> Result<Option<PageResponse>, String>;
-    fn get_task_context(&self) -> Arc<dyn FullTaskContext>;
+    fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
 }
 
@@ -21,12 +21,12 @@ pub struct PageCrawlCommand {
 }
 
 impl PageCrawlCommand {
-    pub fn new(url: String, task_context: Arc<dyn FullTaskContext>, current_depth: u16) -> PageCrawlCommand {
+    pub fn new(url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> PageCrawlCommand {
         PageCrawlCommand { request_object: PageRequest::new(url, None, task_context), current_depth }
     }
 
     fn verify_crawlability(&self) -> bool {
-        let config = self.request_object.task_context.get_config().clone();
+        let config = self.request_object.task_context.lock().unwrap().get_config().clone();
         let config_locked = config.lock().unwrap();
         if config_locked.maximum_depth > 0 &&
             self.current_depth > config_locked.maximum_depth {
@@ -36,15 +36,19 @@ impl PageCrawlCommand {
         drop(config_locked);
         drop(config);
 
-        if self.request_object.task_context.get_all_known_links().lock().unwrap().contains(&self.request_object.url) {
+        if self.request_object.task_context.lock().unwrap().get_all_known_links().lock().unwrap().contains(&self.request_object.url) {
             return false;
         }
 
-        if !self.request_object.task_context.can_access(&self.request_object.url) {
+        if !self.request_object.task_context.lock().unwrap().can_access(&self.request_object.url) {
             return false;
         }
 
         true
+    }
+
+    fn perform_crawl_internal(&self) -> Result<Option<PageResponse>, String> {
+        Ok(Some(PageResponse::new(self.request_object.url.clone())))
     }
 }
 
@@ -57,10 +61,10 @@ impl CrawlCommand for PageCrawlCommand {
             return Ok(None);
         }
 
-        Ok(Some(PageResponse::new(self.request_object.url.clone())))
+        self.perform_crawl_internal()
     }
 
-    fn get_task_context(&self) -> Arc<dyn FullTaskContext> {
+    fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>> {
         self.request_object.task_context.clone()
     }
 
@@ -133,7 +137,7 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
 
         // when: invoked with a current_depth > 0 && > maximum_depth
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 2);
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 2);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect none
@@ -153,7 +157,7 @@ mod tests {
         mock_task_context.expect_can_access().returning(|_| true);
 
         // when: invoked with a current_depth > 0
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 9000);
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 9000);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect some
@@ -171,7 +175,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
 
         // when: invoked with a known link
-        let page_crawl_command = PageCrawlCommand::new(url.clone(), Arc::new(mock_task_context), 1);
+        let page_crawl_command = PageCrawlCommand::new(url.clone(), Arc::new(Mutex::new(mock_task_context)), 1);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect none
@@ -190,7 +194,7 @@ mod tests {
         mock_task_context.expect_can_access().returning(|_| true);
 
         // when: invoked with a known link
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 1);
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 1);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect some
@@ -209,7 +213,7 @@ mod tests {
         mock_task_context.expect_can_access().returning(|_| false);
 
         // when: invoked with a restricted link
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(mock_task_context), 1);
+        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 1);
         let crawl_result = page_crawl_command.crawl().await;
 
         // then: expect none
