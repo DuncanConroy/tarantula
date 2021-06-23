@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 
@@ -8,11 +8,11 @@ use crate::task_context::task_context::FullTaskContext;
 pub struct PageRequest {
     pub url: String,
     pub last_crawled_timestamp: Option<DateTime<Utc>>,
-    pub task_context: Arc<dyn FullTaskContext>,
+    pub task_context: Arc<Mutex<dyn FullTaskContext>>,
 }
 
 impl PageRequest {
-    pub fn new(url: String, last_crawled_timestamp: Option<DateTime<Utc>>, task_context: Arc<dyn FullTaskContext>) -> PageRequest {
+    pub fn new(url: String, last_crawled_timestamp: Option<DateTime<Utc>>, task_context: Arc<Mutex<dyn FullTaskContext>>) -> PageRequest {
         PageRequest {
             url,
             last_crawled_timestamp,
