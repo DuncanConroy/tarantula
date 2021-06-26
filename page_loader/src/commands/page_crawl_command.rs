@@ -85,9 +85,11 @@ mod tests {
     use tokio::time::Instant;
     use uuid::Uuid;
 
+    use linkresult::uri_service::UriService;
+
     use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
     use crate::task_context::robots_service::RobotsTxt;
-    use crate::task_context::task_context::{DefaultTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit};
+    use crate::task_context::task_context::{DefaultTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit, TaskContextServices};
 
     use super::*;
 
@@ -100,6 +102,9 @@ mod tests {
             fn get_last_command_received(&self) -> Instant;
             fn set_last_command_received(&mut self, instant: Instant);
             fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
+        }
+        impl TaskContextServices for MyTaskContext{
+            fn get_uri_service(&self) -> Arc<UriService>;
         }
         impl KnownLinks for MyTaskContext{
             fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
