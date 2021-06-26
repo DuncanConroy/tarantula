@@ -48,7 +48,11 @@ impl PageCrawlCommand {
     }
 
     fn perform_crawl_internal(&self) -> Result<Option<PageResponse>, String> {
-        Ok(Some(PageResponse::new(self.request_object.url.clone())))
+        let mut page_response = PageResponse::new(self.request_object.url.clone());
+        // todo!("TDD approach to retrieve head, redirect, final content, parse and return found links");
+        // loading von header usw. kann man ja auch super in traits auslagern, sodass die kopplung an hyper nur lose ist.
+        // work with dynamic filtering and mapping classes
+        Ok(Some(page_response))
     }
 }
 
