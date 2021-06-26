@@ -25,12 +25,16 @@ pub trait TaskContext: Sync + Send + Debug {
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
 }
 
+pub trait TaskContextServices: Sync + Send + Debug {
+    fn get_uri_service(&self) -> Arc<UriService>;
+}
+
 pub trait KnownLinks: Sync + Send + Debug {
     fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
     fn add_known_link(&self, link: String);
 }
 
-pub trait FullTaskContext: TaskContext + KnownLinks + RobotsTxt {}
+pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + RobotsTxt {}
 
 #[derive(Clone, Debug)]
 pub struct DefaultTaskContext {
@@ -54,7 +58,7 @@ impl TaskContextInit for DefaultTaskContext {
         let robots_service = Arc::new(RobotsService::new(task_config.lock().unwrap().user_agent.clone()));
         let uuid = Uuid::new_v4();
         let all_known_links = Arc::new(Mutex::new(vec![]));
-        let last_command_received= Instant::now();
+        let last_command_received = Instant::now();
         DefaultTaskContext {
             task_config,
             dom_parser,
@@ -81,16 +85,22 @@ impl TaskContext for DefaultTaskContext {
         self.last_command_received
     }
 
-    fn set_last_command_received(&mut self, instant:Instant) {
+    fn set_last_command_received(&mut self, instant: Instant) {
         self.last_command_received = instant;
     }
 
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool {
         return if Instant::now() - self.last_command_received > Duration::from_millis(gc_timeout_ms) {
-                true
-            } else {
-                false
-            }
+            true
+        } else {
+            false
+        };
+    }
+}
+
+impl TaskContextServices for DefaultTaskContext {
+    fn get_uri_service(&self) -> Arc<UriService> {
+        self.uri_service.clone()
     }
 }
 
