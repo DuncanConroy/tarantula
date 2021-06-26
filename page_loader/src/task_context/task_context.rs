@@ -128,7 +128,7 @@ pub struct TaskConfig {
 }
 
 impl TaskConfig {
-    fn new(uri: String) -> TaskConfig {
+    pub fn new(uri: String) -> TaskConfig {
         TaskConfig {
             uri: uri.parse::<hyper::Uri>().unwrap(),
             ignore_redirects: false,
@@ -143,8 +143,9 @@ impl TaskConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::thread;
+
+    use super::*;
 
     #[test]
     fn can_be_garbage_collected_false_by_default() {
