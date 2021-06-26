@@ -109,10 +109,7 @@ async fn do_load(response_channel: Sender<Page>, page_crawl_command: Box<dyn Cra
     // legacy
     // tarantula_core::core::init(RunConfig::new(url), response_channel.clone()).await;
 
-    // let task_context = task_context::init(url);
-
     // new approach
-    // TODO: error handling
     if let Ok(Some(crawl_result)) = page_crawl_command.crawl().await {
         let task_context = page_crawl_command.get_task_context();
         if crawl_result.links.is_some() {
@@ -124,6 +121,8 @@ async fn do_load(response_channel: Sender<Page>, page_crawl_command: Box<dyn Cra
 
         let page_result = Page::new_root(url.clone(), Some(UriProtocol::HTTPS));
         response_channel.send(page_result).await.expect("Could not send result to response channel");
+    } else {
+        todo!("Proper error handling is required!");
     }
 }
 
