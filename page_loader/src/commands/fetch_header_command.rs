@@ -7,6 +7,7 @@ use log::{debug, info, trace};
 #[cfg(test)]
 use mockall::automock;
 
+use crate::http::http_client::HttpClient;
 use crate::page_request::PageRequest;
 
 #[async_trait]
@@ -87,12 +88,6 @@ impl FetchHeaderResponse {
     }
 }
 
-#[cfg_attr(test, automock)]
-#[async_trait]
-pub trait HttpClient: Sync + Send {
-    async fn head(&self, uri: String) -> Result<Response<Body>, String>;
-}
-
 #[cfg(test)]
 mod tests {
     use std::fmt::{Debug, Formatter, Result};
@@ -140,6 +135,13 @@ mod tests {
             fn fmt<'a>(&self, f: &mut Formatter<'a>) -> Result;
         }
     }
+    mock! {
+        MyHttpClient {}
+        #[async_trait]
+        impl HttpClient for MyHttpClient{
+            async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
+        }
+    }
 
     #[tokio::test]
     async fn returns_simple_result_on_simple_request_without_redirect_following() {
@@ -149,7 +151,7 @@ mod tests {
         let task_config = TaskConfig::new("https://example.com".into());
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
-        let mut mock_http_client = MockHttpClient::new();
+        let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
@@ -173,7 +175,7 @@ mod tests {
         let mut task_config = TaskConfig::new("https://example.com".into());
         task_config.maximum_redirects = 2;
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
-        let mut mock_http_client = MockHttpClient::new();
+        let mut mock_http_client = MockMyHttpClient::new();
         let mut sequence = Sequence::new();
         mock_http_client.expect_head()
             .with(eq(String::from("https://example.com")))
