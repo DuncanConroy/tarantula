@@ -10,6 +10,7 @@ use linkresult::UriProtocol;
 use tarantula_core::core::page::Page;
 
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
+use crate::http::http_client::HttpClientImpl;
 use crate::page_loader_service::Command::LoadPage;
 use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
@@ -110,7 +111,8 @@ async fn do_load(response_channel: Sender<Page>, page_crawl_command: Box<dyn Cra
     // tarantula_core::core::init(RunConfig::new(url), response_channel.clone()).await;
 
     // new approach
-    if let Ok(Some(crawl_result)) = page_crawl_command.crawl().await {
+    let http_client = Box::new(HttpClientImpl::new());
+    if let Ok(Some(crawl_result)) = page_crawl_command.crawl(http_client).await {
         let task_context = page_crawl_command.get_task_context();
         if crawl_result.links.is_some() {
             for link in crawl_result.links.unwrap() {
@@ -148,6 +150,7 @@ mod tests {
 
     use linkresult::Link;
 
+    use crate::http::http_client::HttpClient;
     use crate::page_loader_service::Command::{CrawlDomainCommand, LoadPage};
     use crate::page_response::PageResponse;
     use crate::task_context::task_context::{DefaultTaskContext, TaskContext, TaskContextInit};
@@ -230,7 +233,7 @@ mod tests {
             self.url.clone()
         }
 
-        async fn crawl(&self) -> Result<Option<PageResponse>, String> {
+        async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone());
             if self.url != "https://inner" {
                 // if this is the initial crawl, we want to emulate additional links`

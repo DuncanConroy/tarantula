@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
+use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::page_request::PageRequest;
 use crate::page_response::PageResponse;
 use crate::task_context::task_context::FullTaskContext;
@@ -9,7 +10,7 @@ use crate::task_context::task_context::FullTaskContext;
 #[async_trait]
 pub trait CrawlCommand: Sync + Send {
     fn get_url_clone(&self) -> String;
-    async fn crawl(&self) -> Result<Option<PageResponse>, String>;
+    async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String>;
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
 }
@@ -47,7 +48,7 @@ impl PageCrawlCommand {
         true
     }
 
-    fn perform_crawl_internal(&self) -> Result<Option<PageResponse>, String> {
+    fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
         let mut page_response = PageResponse::new(self.request_object.url.clone());
         // todo!("TDD approach to retrieve head, redirect, final content, parse and return found links");
         // work with dynamic filtering and mapping classes, like spring routing, etc.
@@ -59,12 +60,12 @@ impl PageCrawlCommand {
 impl CrawlCommand for PageCrawlCommand {
     fn get_url_clone(&self) -> String { self.request_object.url.clone() }
 
-    async fn crawl(&self) -> Result<Option<PageResponse>, String> {
+    async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
         if !self.verify_crawlability() {
             return Ok(None);
         }
 
-        self.perform_crawl_internal()
+        self.perform_crawl_internal(http_client)
     }
 
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>> {
@@ -80,7 +81,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use hyper::Uri;
+    use hyper::{Body, Response, Uri};
     use mockall::*;
     use tokio::time::Instant;
     use uuid::Uuid;
@@ -117,7 +118,14 @@ mod tests {
         impl FullTaskContext for MyTaskContext{}
 
         impl Debug for MyTaskContext {
-            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> Result;
+            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> std::fmt::Result;
+        }
+    }
+    mock! {
+        MyHttpClient {}
+        #[async_trait]
+        impl HttpClient for MyHttpClient{
+            async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
         }
     }
 
@@ -145,8 +153,9 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
 
         // when: invoked with a current_depth > 0 && > maximum_depth
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 2);
-        let crawl_result = page_crawl_command.crawl().await;
+        let mut page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 2);
+        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
         assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl, if max depth reached")
@@ -166,7 +175,8 @@ mod tests {
 
         // when: invoked with a current_depth > 0
         let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 9000);
-        let crawl_result = page_crawl_command.crawl().await;
+        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some
         assert_eq!(crawl_result.unwrap().is_some(), true, "Should crawl, if max depth not reached, yet")
@@ -184,7 +194,8 @@ mod tests {
 
         // when: invoked with a known link
         let page_crawl_command = PageCrawlCommand::new(url.clone(), Arc::new(Mutex::new(mock_task_context)), 1);
-        let crawl_result = page_crawl_command.crawl().await;
+        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
         assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl, if url is known")
@@ -203,7 +214,8 @@ mod tests {
 
         // when: invoked with a known link
         let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 1);
-        let crawl_result = page_crawl_command.crawl().await;
+        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some
         assert_eq!(crawl_result.unwrap().is_some(), true, "Should crawl, if url is unknown")
@@ -222,7 +234,8 @@ mod tests {
 
         // when: invoked with a restricted link
         let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 1);
-        let crawl_result = page_crawl_command.crawl().await;
+        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
         assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt")
