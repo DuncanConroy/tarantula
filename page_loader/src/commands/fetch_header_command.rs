@@ -12,28 +12,17 @@ use crate::page_request::PageRequest;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String>;
+        async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String>;
 }
 
-struct DefaultFetchHeaderCommand {}
+pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
     async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String> {
         let mut uri = page_request.lock().unwrap().url.clone();
         let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
-        // let https = HttpsConnector::new();
-        // let client = Client::builder().build::<_, hyper::Body>(https);
-        //
-        // let req = Request::builder()
-        //     .method("HEAD")
-        //     .uri(uri.clone())
-        //     .body(Body::from(""))
-        //     .expect("HEAD request builder");
-        //
-        // if ignore_redirects {
-        //     Ok((uri, client.request(req).await.unwrap()))
-        // } else {
+
         let mut num_redirects = 0;
         if redirects.is_some() {
             let redirects_unwrapped = redirects.as_ref().unwrap();

@@ -9,6 +9,7 @@ use tokio::time::Instant;
 use linkresult::UriProtocol;
 use tarantula_core::core::page::Page;
 
+use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::http::http_client::HttpClientImpl;
 use crate::page_loader_service::Command::LoadPage;
@@ -29,7 +30,7 @@ impl PageCrawlCommandFactory {
 
 impl CommandFactory for PageCrawlCommandFactory {
     fn create_page_crawl_command(&self, url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
-        Box::new(PageCrawlCommand::new(url, task_context, current_depth))
+        Box::new(PageCrawlCommand::new(url, task_context, current_depth, Box::new(DefaultFetchHeaderCommand {})))
     }
 }
 
