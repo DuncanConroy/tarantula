@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
+use crate::commands::fetch_header_command::{DefaultFetchHeaderCommand, FetchHeaderCommand};
 use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::page_request::PageRequest;
 use crate::page_response::PageResponse;
@@ -15,19 +16,25 @@ pub trait CrawlCommand: Sync + Send {
     fn get_current_depth(&self) -> u16;
 }
 
-#[derive(Clone, Debug)]
+// #[derive(Clone, Debug)]
 pub struct PageCrawlCommand {
-    pub request_object: PageRequest,
+    pub request_object: Arc<Mutex<PageRequest>>,
     pub current_depth: u16,
+    fetch_header_command: Box<dyn FetchHeaderCommand>,
 }
 
 impl PageCrawlCommand {
-    pub fn new(url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> PageCrawlCommand {
-        PageCrawlCommand { request_object: PageRequest::new(url, None, task_context), current_depth }
+    pub fn new(url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16, fetch_header_command: Box<dyn FetchHeaderCommand>) -> PageCrawlCommand {
+        PageCrawlCommand {
+            request_object: Arc::new(Mutex::new(PageRequest::new(url, None, task_context))),
+            current_depth,
+            fetch_header_command,
+        }
     }
 
     fn verify_crawlability(&self) -> bool {
-        let config = self.request_object.task_context.lock().unwrap().get_config().clone();
+        let request_object_locked = self.request_object.lock().unwrap();
+        let config = request_object_locked.task_context.lock().unwrap().get_config().clone();
         let config_locked = config.lock().unwrap();
         if config_locked.maximum_depth > 0 &&
             self.current_depth > config_locked.maximum_depth {
@@ -37,39 +44,49 @@ impl PageCrawlCommand {
         drop(config_locked);
         drop(config);
 
-        if self.request_object.task_context.lock().unwrap().get_all_known_links().lock().unwrap().contains(&self.request_object.url) {
+        let task_context_locked = request_object_locked.task_context.lock().unwrap();
+        if task_context_locked.get_all_known_links().lock().unwrap().contains(&request_object_locked.url) {
             return false;
         }
 
-        if !self.request_object.task_context.lock().unwrap().can_access(&self.request_object.url) {
+        if !task_context_locked.can_access(&request_object_locked.url) {
             return false;
         }
 
         true
     }
 
-    fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
-        let mut page_response = PageResponse::new(self.request_object.url.clone());
+    async fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+        /// OLD /////
+        // let mut page_response = PageResponse::new(self.request_object.url.clone());
+
+        let fetch_header_command = DefaultFetchHeaderCommand {};
+        let fetch_header_response = fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
+        let mut page_response = PageResponse::new(self.request_object.lock().unwrap().url.clone());
+        page_response.status_code = Some(fetch_header_response.unwrap().http_response_code.as_u16());
+
         // todo!("TDD approach to retrieve head, redirect, final content, parse and return found links");
         // work with dynamic filtering and mapping classes, like spring routing, etc.
+
+
         Ok(Some(page_response))
     }
 }
 
 #[async_trait]
 impl CrawlCommand for PageCrawlCommand {
-    fn get_url_clone(&self) -> String { self.request_object.url.clone() }
+    fn get_url_clone(&self) -> String { self.request_object.lock().unwrap().url.clone() }
 
     async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
         if !self.verify_crawlability() {
             return Ok(None);
         }
 
-        self.perform_crawl_internal(http_client)
+        self.perform_crawl_internal(http_client).await
     }
 
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>> {
-        self.request_object.task_context.clone()
+        self.request_object.lock().unwrap().task_context.clone()
     }
 
     fn get_current_depth(&self) -> u16 { self.current_depth }
@@ -88,6 +105,7 @@ mod tests {
 
     use linkresult::uri_service::UriService;
 
+    use crate::commands::fetch_header_command::{FetchHeaderResponse, Redirect};
     use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
     use crate::task_context::robots_service::RobotsTxt;
     use crate::task_context::task_context::{DefaultTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit, TaskContextServices};
@@ -122,10 +140,19 @@ mod tests {
         }
     }
     mock! {
+        #[async_trait]
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
             async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
+        }
+    }
+    mock! {
+        #[async_trait]
+        MyFetchHeaderCommand {}
+        #[async_trait]
+        impl FetchHeaderCommand for MyFetchHeaderCommand{
+            async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> std::result::Result<FetchHeaderResponse, String>;
         }
     }
 
@@ -151,9 +178,14 @@ mod tests {
         let config = get_default_task_config();
         config.lock().unwrap().maximum_depth = 1;
         mock_task_context.expect_get_config().return_const(config.clone());
+        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
 
         // when: invoked with a current_depth > 0 && > maximum_depth
-        let mut page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 2);
+        let mut page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            2,
+            mock_fetch_header_command);
         let mock_http_client = Box::new(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
@@ -172,10 +204,19 @@ mod tests {
         config.lock().unwrap().maximum_depth = 0;
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_can_access().returning(|_| true);
+        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        let mut mock_http_client = Box::new(MockMyHttpClient::new());
+        mock_http_client.expect_head().returning(|_| Ok(Response::builder()
+            .status(200)
+            .body(Body::from(""))
+            .unwrap()));
 
         // when: invoked with a current_depth > 0
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 9000);
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            9000,
+            mock_fetch_header_command);
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some
@@ -191,9 +232,14 @@ mod tests {
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
+        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
 
         // when: invoked with a known link
-        let page_crawl_command = PageCrawlCommand::new(url.clone(), Arc::new(Mutex::new(mock_task_context)), 1);
+        let page_crawl_command = PageCrawlCommand::new(
+            url.clone(),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command);
         let mock_http_client = Box::new(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
@@ -211,10 +257,19 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        let mut mock_http_client = Box::new(MockMyHttpClient::new());
+        mock_http_client.expect_head().returning(|_| Ok(Response::builder()
+            .status(200)
+            .body(Body::from(""))
+            .unwrap()));
 
         // when: invoked with a known link
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 1);
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command);
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some
@@ -231,9 +286,15 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| false);
+        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
 
         // when: invoked with a restricted link
-        let page_crawl_command = PageCrawlCommand::new(String::from("https://example.com"), Arc::new(Mutex::new(mock_task_context)), 1);
+        let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command,
+        );
         let mock_http_client = Box::new(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
