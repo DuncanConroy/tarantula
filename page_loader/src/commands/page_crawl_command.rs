@@ -325,8 +325,37 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some PageResponse with Teapot status code
-        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should not crawl urls forbidden by robots.txt");
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
         assert_eq!(crawl_result.unwrap().unwrap().status_code.unwrap(), StatusCode::IM_A_TEAPOT);
+    }
+
+    #[tokio::test]
+    async fn returned_page_response_does_not_include_body_if_head_status_is_not_200() {
+        // given: a task context that allows crawl
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = get_default_task_config();
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_can_access().returning(|_| true);
+        let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(StatusCode::INTERNAL_SERVER_ERROR)));
+
+        // when: invoked with a regular link
+        let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command,
+        );
+        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+
+        // then: expect some PageResponse with InternalServerError status code and no body
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.unwrap(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_none(), true, "Should not have body, if status is not ok");
 
         // TODO: add more tests, once PageResponse structure is clear
     }
