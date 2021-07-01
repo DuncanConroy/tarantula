@@ -16,7 +16,6 @@ pub trait CrawlCommand: Sync + Send {
     fn get_current_depth(&self) -> u16;
 }
 
-// #[derive(Clone, Debug)]
 pub struct PageCrawlCommand {
     pub request_object: Arc<Mutex<PageRequest>>,
     pub current_depth: u16,
@@ -60,8 +59,7 @@ impl PageCrawlCommand {
         /// OLD /////
         // let mut page_response = PageResponse::new(self.request_object.url.clone());
 
-        let fetch_header_command = DefaultFetchHeaderCommand {};
-        let fetch_header_response = fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
+        let fetch_header_response = self.fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
         let mut page_response = PageResponse::new(self.request_object.lock().unwrap().url.clone());
         page_response.status_code = Some(fetch_header_response.unwrap().http_response_code.as_u16());
 
@@ -98,7 +96,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use hyper::{Body, Response, Uri};
+    use hyper::{Body, Response, StatusCode, Uri};
     use mockall::*;
     use tokio::time::Instant;
     use uuid::Uuid;
@@ -110,6 +108,7 @@ mod tests {
     use crate::task_context::robots_service::RobotsTxt;
     use crate::task_context::task_context::{DefaultTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit, TaskContextServices};
 
+    use super::*;
     use super::*;
 
     mock! {
@@ -300,5 +299,35 @@ mod tests {
 
         // then: expect none
         assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt")
+    }
+
+    #[tokio::test]
+    async fn returns_proper_page_response_on_successful_crawl() {
+        // given: a task context with robots_txt disallowing crawling
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = get_default_task_config();
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_can_access().returning(|_| true);
+        let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(StatusCode::IM_A_TEAPOT)));
+
+        // when: invoked with a restricted link
+        let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command,
+        );
+        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+
+        // then: expect some PageResponse with Teapot status code
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should not crawl urls forbidden by robots.txt");
+        assert_eq!(crawl_result.unwrap().unwrap().status_code.unwrap(), StatusCode::IM_A_TEAPOT);
+
+        // TODO: add more tests, once PageResponse structure is clear
     }
 }
