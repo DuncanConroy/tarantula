@@ -303,7 +303,7 @@ mod tests {
 
     #[tokio::test]
     async fn returns_proper_page_response_on_successful_crawl() {
-        // given: a task context with robots_txt disallowing crawling
+        // given: a task context that allows crawl
         let url = String::from("https://example.com");
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_url().return_const(url.clone());
@@ -314,7 +314,7 @@ mod tests {
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(StatusCode::IM_A_TEAPOT)));
 
-        // when: invoked with a restricted link
+        // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
             String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
