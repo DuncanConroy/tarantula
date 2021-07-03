@@ -12,6 +12,7 @@ use mockall::automock;
 
 use crate::http::http_client::HttpClient;
 use crate::page_request::PageRequest;
+use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
@@ -47,7 +48,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         }
 
         let redirects_result = redirects.unwrap_or(vec![]);
-        let result = FetchHeaderResponse { redirects: redirects_result, http_response_code: response.status(), headers };
+        let result = FetchHeaderResponse { redirects: redirects_result, http_response_code: response.status(), headers, requested_url: uri.clone(), response_timings: ResponseTimings::new(uri.clone()) };
         Ok(result)
     }
 }
@@ -78,17 +79,21 @@ pub struct Redirect {
 
 #[derive(Debug, Clone)]
 pub struct FetchHeaderResponse {
+    pub requested_url: String,
     pub redirects: Vec<Redirect>,
     pub http_response_code: StatusCode,
     pub headers: HashMap<String, String>,
+    pub response_timings: ResponseTimings,
 }
 
 impl FetchHeaderResponse {
-    pub fn new(http_response_code: StatusCode) -> FetchHeaderResponse {
+    pub fn new(requested_url: String, http_response_code: StatusCode) -> FetchHeaderResponse {
         FetchHeaderResponse {
+            requested_url: requested_url.clone(),
             redirects: vec![],
             http_response_code,
             headers: HashMap::new(),
+            response_timings: ResponseTimings::new(format!("FetchHeaderResponse.{}", requested_url.clone())),
         }
     }
 }
