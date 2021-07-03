@@ -56,12 +56,10 @@ impl PageCrawlCommand {
     }
 
     async fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
-        /// OLD /////
-        // let mut page_response = PageResponse::new(self.request_object.url.clone());
-
         let fetch_header_response = self.fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
         let mut page_response = PageResponse::new(self.request_object.lock().unwrap().url.clone());
-        page_response.status_code = Some(fetch_header_response.unwrap().http_response_code.as_u16());
+        page_response.status_code = Some(fetch_header_response.as_ref().unwrap().http_response_code.as_u16().clone());
+        page_response.headers = Some(fetch_header_response.unwrap());
 
         // todo!("TDD approach to retrieve head, redirect, final content, parse and return found links");
         // work with dynamic filtering and mapping classes, like spring routing, etc.
@@ -203,7 +201,8 @@ mod tests {
         config.lock().unwrap().maximum_depth = 0;
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_can_access().returning(|_| true);
-        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(StatusCode::IM_A_TEAPOT)));
         let mut mock_http_client = Box::new(MockMyHttpClient::new());
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
@@ -256,7 +255,8 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
-        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(StatusCode::IM_A_TEAPOT)));
         let mut mock_http_client = Box::new(MockMyHttpClient::new());
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
@@ -326,7 +326,8 @@ mod tests {
 
         // then: expect some PageResponse with Teapot status code
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
-        assert_eq!(crawl_result.unwrap().unwrap().status_code.unwrap(), StatusCode::IM_A_TEAPOT);
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.unwrap(), StatusCode::IM_A_TEAPOT);
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
     }
 
     #[tokio::test]
@@ -356,6 +357,7 @@ mod tests {
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.unwrap(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_none(), true, "Should not have body, if status is not ok");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
 
         // TODO: add more tests, once PageResponse structure is clear
     }
