@@ -91,6 +91,7 @@ impl CrawlCommand for PageCrawlCommand {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
     use std::fmt::{Debug, Formatter, Result};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -363,5 +364,11 @@ mod tests {
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_none(), true, "Should not have body, if status is not ok");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
+        let is_page_response_before_featch_header_response = crawl_result.as_ref().unwrap().as_ref().unwrap()
+            .response_timings.start_time.as_ref().unwrap()
+            .cmp(crawl_result.as_ref().unwrap().as_ref().unwrap()
+                .headers.as_ref().unwrap()
+                .response_timings.start_time.as_ref().unwrap());
+        assert_eq!(is_page_response_before_featch_header_response, Ordering::Less, "PageResponse start_time should be before FetchHeaderResponse start_time");
     }
 }
