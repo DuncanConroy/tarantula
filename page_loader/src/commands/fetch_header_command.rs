@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use hyper::{Body, Response, StatusCode, Uri};
+use hyper::header::HeaderValue;
 use log::{debug, info, trace};
 #[cfg(test)]
 use mockall::automock;
@@ -37,16 +38,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let headers: HashMap<String, String> = response.headers().iter().map(|(key, value)| { (key.to_string(), String::from(value.to_str().unwrap())) }).collect();
         if num_redirects < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
-                let uri_service = page_request.lock().unwrap().task_context.lock().unwrap().get_uri_service();
-                let uri_object = Uri::from_str(&uri).unwrap();
-                let adjusted_uri = uri_service.form_full_url(uri_object.scheme_str().unwrap(), location_header.to_str().unwrap(), uri_object.host().unwrap(), &Some(uri.clone()));
-                let redirect = Redirect { source: uri, destination: adjusted_uri.to_string(), http_response_code: response.status(), headers: headers.clone() };
-                debug!("Following redirect {}", adjusted_uri);
-                let mut redirects_for_next = vec![];
-                if redirects.is_some() {
-                    redirects_for_next.append(&mut redirects.unwrap());
-                }
-                redirects_for_next.push(redirect);
+                let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(&page_request, redirects, uri, &response, &headers, location_header);
                 let response = self.fetch_header(page_request.clone(), http_client, Some(redirects_for_next)).await;
                 return response;
             }
@@ -57,6 +49,22 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let redirects_result = redirects.unwrap_or(vec![]);
         let result = FetchHeaderResponse { redirects: redirects_result, http_response_code: response.status(), headers };
         Ok(result)
+    }
+}
+
+impl DefaultFetchHeaderCommand {
+    fn append_redirect(page_request: &Arc<Mutex<PageRequest>>, redirects: Option<Vec<Redirect>>, uri: String, response: &Response<Body>, headers: &HashMap<String, String>, location_header: &HeaderValue) -> Vec<Redirect> {
+        let uri_service = page_request.lock().unwrap().task_context.lock().unwrap().get_uri_service();
+        let uri_object = Uri::from_str(&uri).unwrap();
+        let adjusted_uri = uri_service.form_full_url(uri_object.scheme_str().unwrap(), location_header.to_str().unwrap(), uri_object.host().unwrap(), &Some(uri.clone()));
+        let redirect = Redirect { source: uri, destination: adjusted_uri.to_string(), http_response_code: response.status(), headers: headers.clone() };
+        debug!("Following redirect {}", adjusted_uri);
+        let mut redirects_for_next = vec![];
+        if redirects.is_some() {
+            redirects_for_next.append(&mut redirects.unwrap());
+        }
+        redirects_for_next.push(redirect);
+        redirects_for_next
     }
 }
 
