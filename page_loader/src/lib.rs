@@ -4,6 +4,7 @@
 
 mod commands;
 mod http;
+mod response_timings;
 pub mod page_request;
 pub mod page_response;
 pub mod page_loader_service;
