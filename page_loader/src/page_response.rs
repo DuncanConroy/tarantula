@@ -1,4 +1,9 @@
+use std::collections::HashMap;
+use std::iter::Map;
+
 use linkresult::Link;
+
+use crate::commands::fetch_header_command::FetchHeaderResponse;
 
 #[derive(Debug, Clone)]
 pub struct PageResponse {
@@ -6,7 +11,7 @@ pub struct PageResponse {
     pub final_url_after_redirects: Option<String>,
     pub redirected_from: Option<Box<PageResponse>>,
     pub status_code: Option<u16>,
-    pub head: Option<String>,
+    pub headers: Option<FetchHeaderResponse>,
     pub body: Option<String>,
     pub links: Option<Vec<Link>>,
 }
@@ -18,7 +23,7 @@ impl PageResponse {
             final_url_after_redirects: None,
             redirected_from: None,
             status_code: None,
-            head: None,
+            headers: None,
             body: None,
             links: None,
         }

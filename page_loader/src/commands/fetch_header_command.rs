@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::iter::Map;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -12,7 +14,7 @@ use crate::page_request::PageRequest;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-        async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String>;
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
@@ -32,12 +34,13 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
 
         let response = http_client.head(uri.clone()).await.unwrap();
         trace!("HEAD for {}: {:?}", uri, response.headers());
+        let headers: HashMap<String, String> = response.headers().iter().map(|(key, value)| { (key.to_string(), String::from(value.to_str().unwrap())) }).collect();
         if num_redirects < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
                 let uri_service = page_request.lock().unwrap().task_context.lock().unwrap().get_uri_service();
                 let uri_object = Uri::from_str(&uri).unwrap();
                 let adjusted_uri = uri_service.form_full_url(uri_object.scheme_str().unwrap(), location_header.to_str().unwrap(), uri_object.host().unwrap(), &Some(uri.clone()));
-                let redirect = Redirect { source: uri, destination: adjusted_uri.to_string(), http_response_code: response.status() };
+                let redirect = Redirect { source: uri, destination: adjusted_uri.to_string(), http_response_code: response.status(), headers: headers.clone() };
                 debug!("Following redirect {}", adjusted_uri);
                 let mut redirects_for_next = vec![];
                 if redirects.is_some() {
@@ -52,20 +55,24 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         }
 
         let redirects_result = redirects.unwrap_or(vec![]);
-        let result = FetchHeaderResponse { redirects: redirects_result, http_response_code: response.status() };
+        let result = FetchHeaderResponse { redirects: redirects_result, http_response_code: response.status(), headers };
         Ok(result)
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Redirect {
     source: String,
     destination: String,
     http_response_code: StatusCode,
+    headers: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct FetchHeaderResponse {
     pub redirects: Vec<Redirect>,
     pub http_response_code: StatusCode,
+    pub headers: HashMap<String, String>,
 }
 
 impl FetchHeaderResponse {
@@ -73,6 +80,7 @@ impl FetchHeaderResponse {
         FetchHeaderResponse {
             redirects: vec![],
             http_response_code,
+            headers: HashMap::new(),
         }
     }
 }
@@ -182,10 +190,12 @@ mod tests {
             .returning(|_| Ok(Response::builder()
                 .status(308)
                 .header("location", "https://second-redirect.example.com")
+                .header("x-custom", "Hello World")
                 .body(Body::from(""))
                 .unwrap()));
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
+            .header("x-custom", "Final destination")
             .body(Body::from(""))
             .unwrap()));
         let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
@@ -197,10 +207,13 @@ mod tests {
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
         let result_unwrapped = result.unwrap();
         assert_eq!(result_unwrapped.redirects.len(), 2, "Should have two redirects");
+        assert_eq!(result_unwrapped.headers.get("x-custom").unwrap(), &String::from("Final destination"), "Should have headers embedded");
         assert_eq!(result_unwrapped.redirects[0].source, String::from("https://example.com"), "Source should match");
         assert_eq!(result_unwrapped.redirects[0].destination, String::from("https://first-redirect.example.com/"), "Destination should match");
+        assert_eq!(result_unwrapped.redirects[0].headers.get("location").unwrap(), &String::from("https://first-redirect.example.com/"), "Should have headers embedded");
         assert_eq!(result_unwrapped.redirects[1].source, String::from("https://first-redirect.example.com/"), "Source should match");
         assert_eq!(result_unwrapped.redirects[1].destination, String::from("https://second-redirect.example.com/"), "Destination should match");
+        assert_eq!(result_unwrapped.redirects[1].headers.get("x-custom").unwrap(), &String::from("Hello World"), "Should have headers embedded");
     }
 
     // todo: test with ignore redirect
