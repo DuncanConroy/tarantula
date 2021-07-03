@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 use crate::commands::fetch_header_command::{DefaultFetchHeaderCommand, FetchHeaderCommand};
 use crate::http::http_client::{HttpClient, HttpClientImpl};
@@ -56,15 +57,15 @@ impl PageCrawlCommand {
     }
 
     async fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
-        let fetch_header_response = self.fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
         let mut page_response = PageResponse::new(self.request_object.lock().unwrap().url.clone());
+        let fetch_header_response = self.fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
         page_response.status_code = Some(fetch_header_response.as_ref().unwrap().http_response_code.as_u16().clone());
         page_response.headers = Some(fetch_header_response.unwrap());
 
         // todo!("TDD approach to retrieve head, redirect, final content, parse and return found links");
         // work with dynamic filtering and mapping classes, like spring routing, etc.
 
-
+        page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
         Ok(Some(page_response))
     }
 }
@@ -187,7 +188,7 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
-        assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl, if max depth reached")
+        assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl, if max depth reached");
     }
 
     #[tokio::test]
@@ -218,7 +219,8 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some
-        assert_eq!(crawl_result.unwrap().is_some(), true, "Should crawl, if max depth not reached, yet")
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl, if max depth not reached, yet");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
     }
 
     #[tokio::test]
@@ -242,7 +244,7 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
-        assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl, if url is known")
+        assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl, if url is known");
     }
 
     #[tokio::test]
@@ -272,7 +274,8 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some
-        assert_eq!(crawl_result.unwrap().is_some(), true, "Should crawl, if url is unknown")
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl, if url is unknown");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
     }
 
     #[tokio::test]
@@ -298,7 +301,7 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
-        assert_eq!(crawl_result.unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt")
+        assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt");
     }
 
     #[tokio::test]
@@ -328,6 +331,7 @@ mod tests {
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.unwrap(), StatusCode::IM_A_TEAPOT);
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
     }
 
     #[tokio::test]
@@ -358,7 +362,6 @@ mod tests {
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.unwrap(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_none(), true, "Should not have body, if status is not ok");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
-
-        // TODO: add more tests, once PageResponse structure is clear
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
     }
 }

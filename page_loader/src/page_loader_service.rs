@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -13,6 +14,7 @@ use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::http::http_client::HttpClientImpl;
 use crate::page_loader_service::Command::LoadPage;
+use crate::page_response::PageResponse;
 use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
 
@@ -102,7 +104,7 @@ impl PageLoaderService {
     }
 }
 
-async fn do_load(response_channel: Sender<Page>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<Command>) {
+async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<Command>) {
     // updated last_command_received for garbage collection handling
     page_crawl_command.get_task_context().lock().unwrap().set_last_command_received(Instant::now());
 
@@ -115,15 +117,16 @@ async fn do_load(response_channel: Sender<Page>, page_crawl_command: Box<dyn Cra
     let http_client = Box::new(HttpClientImpl::new());
     if let Ok(Some(crawl_result)) = page_crawl_command.crawl(http_client).await {
         let task_context = page_crawl_command.get_task_context();
-        if crawl_result.links.is_some() {
-            for link in crawl_result.links.unwrap() {
+        if crawl_result.borrow().links.is_some() {
+            for link in crawl_result.borrow().links.as_ref().unwrap() {
                 let resp = response_channel.clone();
-                tx.send(LoadPage { url: String::from(link.uri), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 }).await;
+                tx.send(LoadPage { url: String::from(link.uri.clone()), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 }).await;
             }
         }
 
-        let page_result = Page::new_root(url.clone(), Some(UriProtocol::HTTPS));
-        response_channel.send(page_result).await.expect("Could not send result to response channel");
+        // let page_result = Page::new_root(url.clone(), Some(UriProtocol::HTTPS));
+        // response_channel.send(page_result).await.expect("Could not send result to response channel");
+        response_channel.send(crawl_result).await.expect("Could not send result to response channel");
     } else {
         todo!("Proper error handling is required!");
     }
@@ -132,13 +135,13 @@ async fn do_load(response_channel: Sender<Page>, page_crawl_command: Box<dyn Cra
 pub enum Command {
     LoadPage {
         url: String,
-        response_channel: mpsc::Sender<Page>,
+        response_channel: mpsc::Sender<PageResponse>,
         task_context: Arc<Mutex<dyn FullTaskContext>>,
         current_depth: u16,
     },
     CrawlDomainCommand {
         url: String,
-        response_channel: mpsc::Sender<Page>,
+        response_channel: mpsc::Sender<PageResponse>,
         last_crawled_timestamp: u64,
     },
 }
@@ -176,9 +179,9 @@ mod tests {
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = Page::new_root("https://example.com".into(), Some(UriProtocol::HTTPS));
+        let expected_result = PageResponse::new("https://example.com".into());
         let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.link.uri, actual_result.link.uri);
+        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
     }
 
     #[tokio::test]
@@ -193,9 +196,9 @@ mod tests {
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = Page::new_root("https://example.com".into(), Some(UriProtocol::HTTPS));
+        let expected_result = PageResponse::new("https://example.com".into());
         let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.link.uri, actual_result.link.uri);
+        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
     }
 
     #[tokio::test]
@@ -278,11 +281,11 @@ mod tests {
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = Page::new_root("https://example.com".into(), Some(UriProtocol::HTTPS));
+        let expected_result = PageResponse::new("https://example.com".into());
         let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.link.uri, actual_result.link.uri);
-        let expected_result = Page::new_root("https://inner".into(), Some(UriProtocol::HTTPS));
+        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
+        let expected_result = PageResponse::new("https://inner".into());
         let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.link.uri, actual_result.link.uri);
+        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
     }
 }

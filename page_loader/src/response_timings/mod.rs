@@ -15,4 +15,12 @@ impl ResponseTimings {
             name,
         }
     }
+
+    pub fn from(name: String, start_time: DateTime<Utc>, end_time: DateTime<Utc>) -> ResponseTimings {
+        ResponseTimings {
+            start_time: Some(start_time),
+            end_time: Some(end_time),
+            name,
+        }
+    }
 }

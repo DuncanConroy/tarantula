@@ -53,8 +53,8 @@ async fn process() {
     let send_result = tx.send(CrawlDomainCommand { url: run_config.url, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
 
     let manager = tokio::spawn(async move {
-        while let Some(page) = resp_rx.recv().await {
-            info!("Received from threads: {:?}", page);
+        while let Some(page_response) = resp_rx.recv().await {
+            info!("Received from threads: {:?}", page_response);
         }
     });
 

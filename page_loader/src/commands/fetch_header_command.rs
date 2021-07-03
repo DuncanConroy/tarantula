@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use hyper::{Body, Response, StatusCode, Uri};
 use hyper::header::HeaderValue;
 use log::{debug, info, trace};
@@ -24,6 +25,7 @@ pub struct DefaultFetchHeaderCommand {}
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
     async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String> {
+        let start_time = DateTime::from(Utc::now());
         let mut uri = page_request.lock().unwrap().url.clone();
         let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
 
@@ -39,7 +41,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let headers: HashMap<String, String> = response.headers().iter().map(|(key, value)| { (key.to_string(), String::from(value.to_str().unwrap())) }).collect();
         if num_redirects < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
-                let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(&page_request, redirects, uri, &response, &headers, location_header);
+                let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(&page_request, redirects, uri, &response, &headers, location_header, start_time);
                 let response = self.fetch_header(page_request.clone(), http_client, Some(redirects_for_next)).await;
                 return response;
             }
@@ -48,17 +50,29 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         }
 
         let redirects_result = redirects.unwrap_or(vec![]);
-        let result = FetchHeaderResponse { redirects: redirects_result, http_response_code: response.status(), headers, requested_url: uri.clone(), response_timings: ResponseTimings::new(uri.clone()) };
+        let result = FetchHeaderResponse {
+            redirects: redirects_result,
+            http_response_code: response.status(),
+            headers,
+            requested_url: uri.clone(),
+            response_timings: ResponseTimings::from(uri.clone(), start_time, DateTime::from(Utc::now())),
+        };
         Ok(result)
     }
 }
 
 impl DefaultFetchHeaderCommand {
-    fn append_redirect(page_request: &Arc<Mutex<PageRequest>>, redirects: Option<Vec<Redirect>>, uri: String, response: &Response<Body>, headers: &HashMap<String, String>, location_header: &HeaderValue) -> Vec<Redirect> {
+    fn append_redirect(page_request: &Arc<Mutex<PageRequest>>, redirects: Option<Vec<Redirect>>, uri: String, response: &Response<Body>, headers: &HashMap<String, String>, location_header: &HeaderValue, redirect_start_time: DateTime<Utc>) -> Vec<Redirect> {
         let uri_service = page_request.lock().unwrap().task_context.lock().unwrap().get_uri_service();
         let uri_object = Uri::from_str(&uri).unwrap();
         let adjusted_uri = uri_service.form_full_url(uri_object.scheme_str().unwrap(), location_header.to_str().unwrap(), uri_object.host().unwrap(), &Some(uri.clone()));
-        let redirect = Redirect { source: uri, destination: adjusted_uri.to_string(), http_response_code: response.status(), headers: headers.clone() };
+        let redirect = Redirect {
+            source: uri.clone(),
+            destination: adjusted_uri.to_string(),
+            http_response_code: response.status(),
+            headers: headers.clone(),
+            response_timings: ResponseTimings::from(format!("Redirect.{}", uri.clone()), redirect_start_time, DateTime::from(Utc::now())),
+        };
         debug!("Following redirect {}", adjusted_uri);
         let mut redirects_for_next = vec![];
         if redirects.is_some() {
@@ -75,6 +89,7 @@ pub struct Redirect {
     destination: String,
     http_response_code: StatusCode,
     headers: HashMap<String, String>,
+    response_timings: ResponseTimings,
 }
 
 #[derive(Debug, Clone)]
@@ -172,7 +187,8 @@ mod tests {
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
-        assert_eq!(result.unwrap().redirects.len(), 0, "Should not have any redirects");
+        assert_eq!(result.as_ref().unwrap().redirects.len(), 0, "Should not have any redirects");
+        assert_eq!(result.as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
     }
 
     #[tokio::test]
@@ -221,12 +237,16 @@ mod tests {
         let result_unwrapped = result.unwrap();
         assert_eq!(result_unwrapped.redirects.len(), 2, "Should have two redirects");
         assert_eq!(result_unwrapped.headers.get("x-custom").unwrap(), &String::from("Final destination"), "Should have headers embedded");
+        assert_eq!(result_unwrapped.response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
+
         assert_eq!(result_unwrapped.redirects[0].source, String::from("https://example.com"), "Source should match");
         assert_eq!(result_unwrapped.redirects[0].destination, String::from("https://first-redirect.example.com/"), "Destination should match");
         assert_eq!(result_unwrapped.redirects[0].headers.get("location").unwrap(), &String::from("https://first-redirect.example.com/"), "Should have headers embedded");
+        assert_eq!(result_unwrapped.redirects[0].response_timings.end_time.is_some(), true, "Should have updated end_time after successful run - redirect[0]");
         assert_eq!(result_unwrapped.redirects[1].source, String::from("https://first-redirect.example.com/"), "Source should match");
         assert_eq!(result_unwrapped.redirects[1].destination, String::from("https://second-redirect.example.com/"), "Destination should match");
         assert_eq!(result_unwrapped.redirects[1].headers.get("x-custom").unwrap(), &String::from("Hello World"), "Should have headers embedded");
+        assert_eq!(result_unwrapped.redirects[1].response_timings.end_time.is_some(), true, "Should have updated end_time after successful run - redirect[1]");
     }
 
     // todo: test with ignore redirect
