@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -16,14 +15,14 @@ use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Pin<Box<dyn HttpClient>>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String>;
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Box<dyn HttpClient>), String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Pin<Box<dyn HttpClient>>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String> {
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Box<dyn HttpClient>), String> {
         let start_time = DateTime::from(Utc::now());
         let mut uri = page_request.lock().unwrap().url.clone();
         let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
@@ -56,7 +55,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
             requested_url: uri.clone(),
             response_timings: ResponseTimings::from(format!("FetchHeaderResponse.{}", uri.clone()), start_time, DateTime::from(Utc::now())),
         };
-        Ok(result)
+        Ok((result, http_client))
     }
 }
 
@@ -167,8 +166,8 @@ mod tests {
         }
     }
 
-    fn get_mock_http_client() -> Pin<Box<MockMyHttpClient>> {
-        Box::pin(MockMyHttpClient::new())
+    fn get_mock_http_client() -> Box<MockMyHttpClient> {
+        Box::new(MockMyHttpClient::new())
     }
 
     #[tokio::test]
@@ -194,8 +193,8 @@ mod tests {
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
-        assert_eq!(result.as_ref().unwrap().redirects.len(), 0, "Should not have any redirects");
-        assert_eq!(result.as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
+        assert_eq!(result.as_ref().unwrap().0.redirects.len(), 0, "Should not have any redirects");
+        assert_eq!(result.as_ref().unwrap().0.response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
     }
 
     #[tokio::test]
@@ -241,7 +240,7 @@ mod tests {
 
         // then: simple response is returned, with maximum_redirects redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
-        let result_unwrapped = result.unwrap();
+        let result_unwrapped = result.unwrap().0;
         assert_eq!(result_unwrapped.redirects.len(), 2, "Should have two redirects");
         assert_eq!(result_unwrapped.headers.get("x-custom").unwrap(), &String::from("Final destination"), "Should have headers embedded");
         assert_eq!(result_unwrapped.response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
