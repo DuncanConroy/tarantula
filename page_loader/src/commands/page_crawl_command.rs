@@ -74,13 +74,14 @@ impl PageCrawlCommand {
 
             let headers = &page_response.headers.as_ref().unwrap().headers;
             if headers.contains_key(CONTENT_TYPE.as_str()) && headers.get(CONTENT_TYPE.as_str()).unwrap().contains("text/html") {
-                let page_download_response = self.page_download_command.download_page(self.request_object.clone(), http_client).await;
+                let page_download_response = self.page_download_command.download_page(page_response.headers.as_ref().unwrap().get_final_uri(), http_client).await;
                 if page_download_response.is_ok() {
                     page_response.body = page_download_response.unwrap().body
                 }
             }
 
             // todo!("TDD approach to retrieve head(✅), redirect(✅), final content(✅), parse and return found links");
+            // todo: update PageResponse with final_url_after_redirects
             // todo work with dynamic filtering and mapping classes, like spring routing, etc.
         }
         page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
@@ -110,12 +111,14 @@ impl CrawlCommand for PageCrawlCommand {
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
+    use std::collections::HashMap;
     use std::fmt::{Debug, Formatter};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use hyper::{Body, Response, StatusCode};
     use hyper::header::CONTENT_TYPE;
+    use log4rs::append::Append;
     use mockall::*;
     use tokio::time::Instant;
     use uuid::Uuid;
@@ -179,7 +182,7 @@ mod tests {
         MyPageDownloadCommand {}
         #[async_trait]
         impl PageDownloadCommand for MyPageDownloadCommand{
-                async fn download_page(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
+                async fn download_page(&self, uri: String, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
         }
     }
 
@@ -468,14 +471,26 @@ mod tests {
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| {
             let mut header_response = FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::OK);
             header_response.headers.insert(CONTENT_TYPE.as_str().into(), "text/html; charset=UTF-8".into());
+            header_response.redirects.push(Redirect::from(
+                String::from("https://example.com"),
+                String::from("https://initial-redirection.example.com"),
+            ));
+            header_response.redirects.push(Redirect::from(
+                String::from("https://initial-redirection.example.com"),
+                String::from("https://final-redirection.example.com"),
+            ));
             Ok((header_response, get_mock_http_client()))
         });
         let mut mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
-        mock_page_download_command.expect_download_page().returning(|page_request, _| {
-            let mut download_response = PageDownloadResponse::new(page_request.lock().unwrap().url.clone(), StatusCode::OK);
-            download_response.body = Some("<html><p>Hello World!</p></html>".into());
-            Ok(download_response)
-        });
+        mock_page_download_command.expect_download_page()
+            .returning(|uri, _| {
+                if uri == "https://final-redirection.example.com" {
+                    let mut download_response = PageDownloadResponse::new(uri.clone(), StatusCode::OK);
+                    download_response.body = Some("<html><p>Hello World!</p></html>".into());
+                    return Ok(download_response);
+                }
+                Err(String::from("Wrong URL received in test"))
+            });
 
         // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
