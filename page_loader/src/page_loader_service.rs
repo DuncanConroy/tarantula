@@ -7,9 +7,6 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
-use linkresult::UriProtocol;
-use tarantula_core::core::page::Page;
-
 use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::http::http_client::HttpClientImpl;
@@ -86,7 +83,7 @@ impl PageLoaderService {
                         let tx_task = tx_clone.clone();
                         let local_command_factory = arc_command_factory.clone();
                         tokio::spawn(async move {
-                            let mut page_crawl_command = local_command_factory.create_page_crawl_command(url, task_context, current_depth);
+                            let page_crawl_command = local_command_factory.create_page_crawl_command(url, task_context, current_depth);
                             do_load(response_channel, page_crawl_command, tx_task).await
                         }).await.expect("Problem with spawned worker thread for LoadPageCommand");
                     }
@@ -149,8 +146,6 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use async_trait::async_trait;
 
     use linkresult::Link;
@@ -173,7 +168,6 @@ mod tests {
         // given
         let tx = PageLoaderService::init();
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
-        let task_context = create_default_task_context();
 
         // when
         let send_result = tx.send(CrawlDomainCommand { url: String::from("https://example.com"), response_channel: resp_tx.clone(), last_crawled_timestamp: 0 }).await;
@@ -211,11 +205,11 @@ mod tests {
         let initial_last_command_received_instant = task_context.lock().unwrap().get_last_command_received();
 
         // when
-        let send_result = tx.send(LoadPage { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
+        let _send_result = tx.send(LoadPage { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
 
         // then
         // need to wait for the channel result first...
-        let actual_result = resp_rx.recv().await.unwrap();
+        let _actual_result = resp_rx.recv().await.unwrap();
         let updated_last_command_received_instant = task_context.lock().unwrap().get_last_command_received();
         assert_ne!(updated_last_command_received_instant, initial_last_command_received_instant);
     }
@@ -238,6 +232,7 @@ mod tests {
             self.url.clone()
         }
 
+        #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
         async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone());
             if self.url != "https://inner" {

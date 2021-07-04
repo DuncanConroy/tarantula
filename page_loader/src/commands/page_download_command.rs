@@ -1,13 +1,10 @@
 use std::collections::HashMap;
-use std::iter::Map;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use hyper::{Body, Response, StatusCode, Uri};
-use hyper::header::HeaderValue;
-use log::{debug, info, trace};
+use hyper::StatusCode;
+use log::trace;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
@@ -25,7 +22,7 @@ pub struct DefaultPageDownloadCommand {}
 impl PageDownloadCommand for DefaultPageDownloadCommand {
     async fn download_page(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String> {
         let start_time = DateTime::from(Utc::now());
-        let mut uri = page_request.lock().unwrap().url.clone();
+        let uri = page_request.lock().unwrap().url.clone();
 
         let response = http_client.get(uri.clone()).await.unwrap();
         trace!("GET for {}: {:?}", uri, response.headers());
@@ -69,20 +66,17 @@ impl PageDownloadResponse {
 #[cfg(test)]
 mod tests {
     use std::fmt::{Debug, Formatter, Result};
-    use std::str::FromStr;
     use std::time::Duration;
 
+    use hyper::{Body, Response};
     use mockall::*;
-    use mockall::predicate::eq;
-    use tokio::test;
     use tokio::time::Instant;
     use uuid::Uuid;
 
-    use linkresult::LinkTypeChecker;
     use linkresult::uri_service::UriService;
 
     use crate::task_context::robots_service::RobotsTxt;
-    use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit, TaskContextServices};
+    use crate::task_context::task_context::{FullTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextServices};
 
     use super::*;
 

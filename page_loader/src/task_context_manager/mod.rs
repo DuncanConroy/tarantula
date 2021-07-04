@@ -46,7 +46,7 @@ impl TaskManager for DefaultTaskManager {
 }
 
 impl DefaultTaskManager {
-    fn run(manager_instance: Arc<Mutex<DefaultTaskManager>>, mut gc_timeout_ms: Duration) {
+    fn run(manager_instance: Arc<Mutex<DefaultTaskManager>>, gc_timeout_ms: Duration) {
         loop {
             thread::sleep(gc_timeout_ms);
 
@@ -93,7 +93,8 @@ mod tests {
     async fn added_task_context_gets_garbage_collected_after_timeout() {
         // given
         let mut mock_task_context = MockMyTaskContext::new();
-        mock_task_context.expect_can_be_garbage_collected().returning(|gc_timeout_ms: u64| true);
+        mock_task_context.expect_can_be_garbage_collected().returning(|#[allow(unused_variables)] // allowing, as we don't use gc_timeout_ms
+                                                                       gc_timeout_ms: u64| true);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
         let task_context = Arc::new(Mutex::new(mock_task_context));
         let gc_timeout_ms = 1u64;
@@ -116,7 +117,8 @@ mod tests {
     async fn added_task_context_does_not_get_garbage_collected_within_timeout() {
         // given
         let mut mock_task_context = MockMyTaskContext::new();
-        mock_task_context.expect_can_be_garbage_collected().returning(|gc_timeout_ms: u64| false);
+        mock_task_context.expect_can_be_garbage_collected().returning(|#[allow(unused_variables)] // allowing dead code, as we don't use gc_timeout_ms
+                                                                       gc_timeout_ms: u64| false);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
         let task_context = Arc::new(Mutex::new(mock_task_context));
         let gc_timeout_ms = 1u64;
