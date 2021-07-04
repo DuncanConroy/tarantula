@@ -1,4 +1,6 @@
 use std::borrow::Borrow;
+use std::ops::Deref;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -14,7 +16,7 @@ use crate::task_context::task_context::FullTaskContext;
 #[async_trait]
 pub trait CrawlCommand: Sync + Send {
     fn get_url_clone(&self) -> String;
-    async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String>;
+    async fn crawl(&self, http_client: Pin<Box<dyn HttpClient>>) -> Result<Option<PageResponse>, String>;
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
 }
@@ -60,7 +62,7 @@ impl PageCrawlCommand {
         true
     }
 
-    async fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+    async fn perform_crawl_internal(&self, http_client: Pin<Box<dyn HttpClient>>) -> Result<Option<PageResponse>, String> {
         let mut page_response = PageResponse::new(self.request_object.lock().unwrap().url.clone());
         let fetch_header_response = self.fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
         page_response.status_code = Some(fetch_header_response.as_ref().unwrap().http_response_code.as_u16().clone());
@@ -80,7 +82,7 @@ impl PageCrawlCommand {
 impl CrawlCommand for PageCrawlCommand {
     fn get_url_clone(&self) -> String { self.request_object.lock().unwrap().url.clone() }
 
-    async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+    async fn crawl(&self, http_client: Pin<Box<dyn HttpClient>>) -> Result<Option<PageResponse>, String> {
         if !self.verify_crawlability() {
             return Ok(None);
         }
@@ -159,7 +161,7 @@ mod tests {
         MyFetchHeaderCommand {}
         #[async_trait]
         impl FetchHeaderCommand for MyFetchHeaderCommand{
-            async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> std::result::Result<FetchHeaderResponse, String>;
+            async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Pin<Box<dyn HttpClient>>, redirects: Option<Vec<Redirect>>) -> std::result::Result<FetchHeaderResponse, String>;
         }
     }
     mock! {
@@ -183,6 +185,10 @@ mod tests {
         }))
     }
 
+    fn get_mock_http_client() -> Pin<Box<MockMyHttpClient>> {
+        Box::pin(MockMyHttpClient::new())
+    }
+
     #[tokio::test]
     async fn will_not_crawl_if_max_depth_reached() {
         // given: a task context with maximum_depth > 0
@@ -204,7 +210,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command,
         );
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let mock_http_client = Box::pin(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
@@ -225,7 +231,7 @@ mod tests {
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
-        let mut mock_http_client = Box::new(MockMyHttpClient::new());
+        let mut mock_http_client = get_mock_http_client();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
@@ -264,7 +270,7 @@ mod tests {
             1,
             mock_fetch_header_command,
             mock_page_download_command);
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let mock_http_client = Box::pin(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
@@ -284,7 +290,7 @@ mod tests {
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
-        let mut mock_http_client = Box::new(MockMyHttpClient::new());
+        let mut mock_http_client = get_mock_http_client();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
@@ -325,7 +331,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command,
         );
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let mock_http_client = Box::pin(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect none
@@ -354,7 +360,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command,
         );
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let mock_http_client = Box::pin(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some PageResponse with Teapot status code
@@ -386,7 +392,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command,
         );
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let mock_http_client = Box::pin(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some PageResponse with InternalServerError status code and no body
@@ -430,7 +436,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command,
         );
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let mock_http_client = Box::pin(MockMyHttpClient::new());
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some PageResponse without body
@@ -469,7 +475,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command,
         );
-        let mock_http_client = Box::new(MockMyHttpClient::new());
+        let mock_http_client = get_mock_http_client();
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some PageResponse with body
