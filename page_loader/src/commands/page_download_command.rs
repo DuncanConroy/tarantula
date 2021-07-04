@@ -14,16 +14,15 @@ use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait PageDownloadCommand: Sync + Send {
-    async fn download_page(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
+    async fn download_page(&self, uri: String, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
 }
 
 pub struct DefaultPageDownloadCommand {}
 
 #[async_trait]
 impl PageDownloadCommand for DefaultPageDownloadCommand {
-    async fn download_page(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String> {
+    async fn download_page(&self, uri: String, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String> {
         let start_time = DateTime::from(Utc::now());
-        let uri = page_request.lock().unwrap().url.clone();
 
         let response = http_client.get(uri.clone()).await.unwrap();
         trace!("GET for {}: {:?}", uri, response.headers());
@@ -132,7 +131,7 @@ mod tests {
             .unwrap()));
 
         // when: fetch is invoked
-        let result = command.download_page(Arc::new(Mutex::new(page_request)), mock_http_client).await;
+        let result = command.download_page("https://example.com".into(), mock_http_client).await;
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");

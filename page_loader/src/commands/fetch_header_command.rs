@@ -90,6 +90,19 @@ pub struct Redirect {
     response_timings: ResponseTimings,
 }
 
+#[cfg(test)]
+impl Redirect {
+    pub fn from(source: String, destination: String) -> Redirect {
+        Redirect {
+            source: source.clone(),
+            destination,
+            http_response_code: StatusCode::OK,
+            headers: HashMap::new(),
+            response_timings: ResponseTimings::new(format!("Redirects.{}", source)),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FetchHeaderResponse {
     pub requested_url: String,
@@ -108,6 +121,14 @@ impl FetchHeaderResponse {
             headers: HashMap::new(),
             response_timings: ResponseTimings::new(format!("FetchHeaderResponse.{}", requested_url.clone())),
         }
+    }
+
+    pub fn get_final_uri(&self) -> String {
+        if self.redirects.is_empty() {
+            return self.requested_url.clone();
+        }
+
+        self.redirects.last().unwrap().destination.clone()
     }
 }
 
