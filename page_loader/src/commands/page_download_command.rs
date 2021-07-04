@@ -124,14 +124,14 @@ mod tests {
         let task_config = TaskConfig::new("https://example.com".into());
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
-        let mut mock_http_client = MockMyHttpClient::new();
+        let mut mock_http_client = Box::new(MockMyHttpClient::new());
         mock_http_client.expect_get().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from("Hello World"))
             .unwrap()));
 
         // when: fetch is invoked
-        let result = command.download_page(Arc::new(Mutex::new(page_request)), Box::new(mock_http_client)).await;
+        let result = command.download_page(Arc::new(Mutex::new(page_request)), mock_http_client).await;
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
