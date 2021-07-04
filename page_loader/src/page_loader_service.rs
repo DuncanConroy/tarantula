@@ -117,7 +117,7 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
 
     // new approach
     let user_agent = page_crawl_command.get_task_context().lock().unwrap().get_config().lock().unwrap().user_agent.clone();
-    let http_client = Box::new(HttpClientImpl::new(user_agent));
+    let http_client = Box::pin(HttpClientImpl::new(user_agent));
     if let Ok(Some(crawl_result)) = page_crawl_command.crawl(http_client).await {
         let task_context = page_crawl_command.get_task_context();
         if crawl_result.borrow().links.is_some() {
@@ -151,6 +151,8 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
+    use std::pin::Pin;
+
     use async_trait::async_trait;
 
     use linkresult::Link;
@@ -238,7 +240,7 @@ mod tests {
         }
 
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
-        async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+        async fn crawl(&self, http_client: Pin<Box<dyn HttpClient>>) -> Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone());
             if self.url != "https://inner" {
                 // if this is the initial crawl, we want to emulate additional links`

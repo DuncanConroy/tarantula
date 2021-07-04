@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -15,14 +16,14 @@ use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String>;
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Pin<Box<dyn HttpClient>>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String> {
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Pin<Box<dyn HttpClient>>, redirects: Option<Vec<Redirect>>) -> Result<FetchHeaderResponse, String> {
         let start_time = DateTime::from(Utc::now());
         let mut uri = page_request.lock().unwrap().url.clone();
         let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
@@ -114,6 +115,7 @@ impl FetchHeaderResponse {
 #[cfg(test)]
 mod tests {
     use std::fmt::{Debug, Formatter, Result};
+    use std::pin::Pin;
     use std::time::Duration;
 
     use mockall::*;
@@ -165,6 +167,10 @@ mod tests {
         }
     }
 
+    fn get_mock_http_client() -> Pin<Box<MockMyHttpClient>> {
+        Box::pin(MockMyHttpClient::new())
+    }
+
     #[tokio::test]
     async fn returns_simple_result_on_simple_request_without_redirect_following() {
         // given: simple fetch command
@@ -173,14 +179,18 @@ mod tests {
         let task_config = TaskConfig::new("https://example.com".into());
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
-        let mut mock_http_client = MockMyHttpClient::new();
+        let mut mock_http_client = get_mock_http_client();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
             .unwrap()));
 
         // when: fetch is invoked
-        let result = command.fetch_header(Arc::new(Mutex::new(page_request)), Box::new(mock_http_client), None).await;
+        let result = command.fetch_header(
+            Arc::new(Mutex::new(page_request)),
+            mock_http_client,
+            None,
+        ).await;
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
@@ -198,7 +208,7 @@ mod tests {
         let mut task_config = TaskConfig::new("https://example.com".into());
         task_config.maximum_redirects = 2;
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
-        let mut mock_http_client = MockMyHttpClient::new();
+        let mut mock_http_client = get_mock_http_client();
         let mut sequence = Sequence::new();
         mock_http_client.expect_head()
             .with(eq(String::from("https://example.com")))
@@ -227,7 +237,7 @@ mod tests {
         let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
 
         // when: fetch is invoked
-        let result = command.fetch_header(Arc::new(Mutex::new(page_request)), Box::new(mock_http_client), None).await;
+        let result = command.fetch_header(Arc::new(Mutex::new(page_request)), mock_http_client, None).await;
 
         // then: simple response is returned, with maximum_redirects redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
