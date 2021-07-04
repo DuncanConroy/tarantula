@@ -62,8 +62,8 @@ impl PageCrawlCommand {
         page_response.status_code = Some(fetch_header_response.as_ref().unwrap().http_response_code.as_u16().clone());
         page_response.headers = Some(fetch_header_response.unwrap());
 
-        // todo!("TDD approach to retrieve head, redirect, final content, parse and return found links");
-        // work with dynamic filtering and mapping classes, like spring routing, etc.
+        // todo!("TDD approach to retrieve head(✅), redirect(✅), final content, parse and return found links");
+        // todo work with dynamic filtering and mapping classes, like spring routing, etc.
 
         page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
         Ok(Some(page_response))
@@ -144,6 +144,7 @@ mod tests {
         #[async_trait]
         impl HttpClient for MyHttpClient{
             async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
+            async fn get(&self, uri: String) -> std::result::Result<Response<Body>, String>;
         }
     }
     mock! {
@@ -371,4 +372,6 @@ mod tests {
                 .response_timings.start_time.as_ref().unwrap());
         assert_eq!(is_page_response_before_featch_header_response, Ordering::Less, "PageResponse start_time should be before FetchHeaderResponse start_time");
     }
+
+    // TODO: make sure to not download pages, unless content-type=text/html
 }

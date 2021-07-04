@@ -114,7 +114,8 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
     // tarantula_core::core::init(RunConfig::new(url), response_channel.clone()).await;
 
     // new approach
-    let http_client = Box::new(HttpClientImpl::new());
+    let user_agent = page_crawl_command.get_task_context().lock().unwrap().get_config().lock().unwrap().user_agent.clone();
+    let http_client = Box::new(HttpClientImpl::new(user_agent));
     if let Ok(Some(crawl_result)) = page_crawl_command.crawl(http_client).await {
         let task_context = page_crawl_command.get_task_context();
         if crawl_result.borrow().links.is_some() {

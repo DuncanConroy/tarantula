@@ -12,6 +12,7 @@ use log::{debug, info, trace};
 use mockall::automock;
 
 use crate::http::http_client::HttpClient;
+use crate::http::http_utils;
 use crate::page_request::PageRequest;
 use crate::response_timings::ResponseTimings;
 
@@ -38,7 +39,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
 
         let response = http_client.head(uri.clone()).await.unwrap();
         trace!("HEAD for {}: {:?}", uri, response.headers());
-        let headers: HashMap<String, String> = response.headers().iter().map(|(key, value)| { (key.to_string(), String::from(value.to_str().unwrap())) }).collect();
+        let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
         if num_redirects < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
                 let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(&page_request, redirects, uri, &response, &headers, location_header, start_time);
@@ -55,7 +56,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
             http_response_code: response.status(),
             headers,
             requested_url: uri.clone(),
-            response_timings: ResponseTimings::from(uri.clone(), start_time, DateTime::from(Utc::now())),
+            response_timings: ResponseTimings::from(format!("FetchHeaderResponse.{}", uri.clone()), start_time, DateTime::from(Utc::now())),
         };
         Ok(result)
     }
@@ -165,6 +166,7 @@ mod tests {
         #[async_trait]
         impl HttpClient for MyHttpClient{
             async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
+            async fn get(&self, uri: String) -> std::result::Result<Response<Body>, String>;
         }
     }
 
