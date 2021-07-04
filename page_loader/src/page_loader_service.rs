@@ -9,6 +9,7 @@ use tokio::time::Instant;
 
 use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
+use crate::commands::page_download_command::DefaultPageDownloadCommand;
 use crate::http::http_client::HttpClientImpl;
 use crate::page_loader_service::Command::LoadPage;
 use crate::page_response::PageResponse;
@@ -29,7 +30,11 @@ impl PageCrawlCommandFactory {
 
 impl CommandFactory for PageCrawlCommandFactory {
     fn create_page_crawl_command(&self, url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
-        Box::new(PageCrawlCommand::new(url, task_context, current_depth, Box::new(DefaultFetchHeaderCommand {})))
+        Box::new(PageCrawlCommand::new(url,
+                                       task_context,
+                                       current_depth,
+                                       Box::new(DefaultFetchHeaderCommand {}),
+                                       Box::new(DefaultPageDownloadCommand {})))
     }
 }
 
