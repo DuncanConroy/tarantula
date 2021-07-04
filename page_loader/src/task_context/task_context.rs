@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn can_be_garbage_collected_true_on_timeout() {
         // given: a usual task context
-        let mut context = DefaultTaskContext::init("https://example.com".into());
+        let context = DefaultTaskContext::init("https://example.com".into());
         let gc_timeout_ms = 10u64;
 
         // when: can_be_garbage_collected is invoked after gc_timeout_ms * 2

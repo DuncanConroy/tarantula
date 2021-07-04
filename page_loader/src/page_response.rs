@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use std::iter::Map;
-
 use linkresult::Link;
 
 use crate::commands::fetch_header_command::FetchHeaderResponse;

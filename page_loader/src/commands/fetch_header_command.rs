@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::iter::Map;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -8,8 +7,6 @@ use chrono::{DateTime, Utc};
 use hyper::{Body, Response, StatusCode, Uri};
 use hyper::header::HeaderValue;
 use log::{debug, info, trace};
-#[cfg(test)]
-use mockall::automock;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
@@ -117,12 +114,10 @@ impl FetchHeaderResponse {
 #[cfg(test)]
 mod tests {
     use std::fmt::{Debug, Formatter, Result};
-    use std::str::FromStr;
     use std::time::Duration;
 
     use mockall::*;
     use mockall::predicate::eq;
-    use tokio::test;
     use tokio::time::Instant;
     use uuid::Uuid;
 
@@ -130,7 +125,7 @@ mod tests {
     use linkresult::uri_service::UriService;
 
     use crate::task_context::robots_service::RobotsTxt;
-    use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit, TaskContextServices};
+    use crate::task_context::task_context::{FullTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextServices};
 
     use super::*;
 

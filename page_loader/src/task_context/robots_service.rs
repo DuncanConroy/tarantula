@@ -130,7 +130,6 @@ impl Debug for RobotsService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mockall::*;
 
     #[test]
     fn can_not_access_on_disallow_all() {
@@ -176,7 +175,7 @@ mod tests {
     #[test]
     fn can_access_if_only_robots_txt_permits(){
         // given: a robots.txt which allows us access
-        let mut service = RobotsService::new("tarantula".into());
+        let service = RobotsService::new("tarantula".into());
         let robots_body = "user-agent: tarantula\n\
                            disallow: /\n";
         service.robot_file_parser.lock().unwrap().parse(robots_body);

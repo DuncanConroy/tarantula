@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
-use crate::commands::fetch_header_command::{DefaultFetchHeaderCommand, FetchHeaderCommand};
-use crate::http::http_client::{HttpClient, HttpClientImpl};
+use crate::commands::fetch_header_command::FetchHeaderCommand;
+use crate::http::http_client::HttpClient;
 use crate::page_request::PageRequest;
 use crate::page_response::PageResponse;
 use crate::task_context::task_context::FullTaskContext;
@@ -92,11 +92,11 @@ impl CrawlCommand for PageCrawlCommand {
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
-    use std::fmt::{Debug, Formatter, Result};
+    use std::fmt::{Debug, Formatter};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use hyper::{Body, Response, StatusCode, Uri};
+    use hyper::{Body, Response, StatusCode};
     use mockall::*;
     use tokio::time::Instant;
     use uuid::Uuid;
@@ -106,9 +106,8 @@ mod tests {
     use crate::commands::fetch_header_command::{FetchHeaderResponse, Redirect};
     use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
     use crate::task_context::robots_service::RobotsTxt;
-    use crate::task_context::task_context::{DefaultTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextInit, TaskContextServices};
+    use crate::task_context::task_context::{KnownLinks, TaskConfig, TaskContext, TaskContextServices};
 
-    use super::*;
     use super::*;
 
     mock! {
@@ -181,7 +180,7 @@ mod tests {
         let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
 
         // when: invoked with a current_depth > 0 && > maximum_depth
-        let mut page_crawl_command = PageCrawlCommand::new(
+        let page_crawl_command = PageCrawlCommand::new(
             String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             2,
@@ -205,7 +204,7 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
         let mut mock_http_client = Box::new(MockMyHttpClient::new());
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
@@ -260,7 +259,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
         let mut mock_http_client = Box::new(MockMyHttpClient::new());
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
@@ -317,7 +316,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT)));
 
         // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
@@ -347,7 +346,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|a, b, c| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::INTERNAL_SERVER_ERROR)));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok(FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::INTERNAL_SERVER_ERROR)));
 
         // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
