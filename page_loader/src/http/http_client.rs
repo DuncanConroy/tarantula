@@ -23,6 +23,12 @@ impl HttpClientImpl {
         }
     }
 
+    #[cfg(test)]
+    async fn send_request(&self, method: &str, uri: String) -> Result<Response<Body>, String> {
+        panic!("Don't send requests in test!")
+    }
+
+    #[cfg(not(test))]
     async fn send_request(&self, method: &str, uri: String) -> Result<Response<Body>, String> {
         let req = Request::builder()
             .header("user-agent", self.user_agent.clone())

@@ -311,7 +311,7 @@ async fn find_links_to_visit(
         }
 
         let uri_result: UriResult =
-            app_context.lock().unwrap().dom_parser.get_links(&protocol, host, item_body).unwrap();
+            app_context.lock().unwrap().dom_parser.get_links(&protocol, host, &item_body).unwrap();
         page_to_process.response_timings.parse_complete_time = Some(uri_result.parse_complete_time);
 
         let result: Vec<Link> = if same_domain_only {

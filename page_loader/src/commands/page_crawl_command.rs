@@ -7,6 +7,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::header::CONTENT_TYPE;
 
+use linkresult::Link;
+
 use crate::commands::fetch_header_command::FetchHeaderCommand;
 use crate::commands::page_download_command::PageDownloadCommand;
 use crate::http::http_client::HttpClient;
@@ -40,8 +42,10 @@ impl PageCrawlCommand {
     }
 
     fn verify_crawlability(&self) -> bool {
-        let request_object_locked = self.request_object.lock().unwrap();
-        let config = request_object_locked.task_context.lock().unwrap().get_config().clone();
+        let request_object = self.request_object.clone();
+        let request_object_locked = request_object.lock().unwrap();
+        let task_context = request_object_locked.task_context.clone();
+        let config = task_context.lock().unwrap().get_config().clone();
         let config_locked = config.lock().unwrap();
         if config_locked.maximum_depth > 0 &&
             self.current_depth > config_locked.maximum_depth {
@@ -51,7 +55,7 @@ impl PageCrawlCommand {
         drop(config_locked);
         drop(config);
 
-        let task_context_locked = request_object_locked.task_context.lock().unwrap();
+        let task_context_locked = task_context.lock().unwrap();
         if task_context_locked.get_all_known_links().lock().unwrap().contains(&request_object_locked.url) {
             return false;
         }
@@ -64,8 +68,9 @@ impl PageCrawlCommand {
     }
 
     async fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
-        let mut page_response = PageResponse::new(self.request_object.lock().unwrap().url.clone());
-        let fetch_header_response = self.fetch_header_command.fetch_header(self.request_object.clone(), http_client, None).await;
+        let request_object_cloned = self.request_object.clone();
+        let mut page_response = PageResponse::new(request_object_cloned.lock().unwrap().url.clone());
+        let fetch_header_response = self.fetch_header_command.fetch_header(request_object_cloned, http_client, None).await;
         if let Ok(result) = fetch_header_response {
             let http_client = result.1;
             let fetch_header_response = result.0;
@@ -78,12 +83,11 @@ impl PageCrawlCommand {
             if headers.contains_key(CONTENT_TYPE.as_str()) && headers.get(CONTENT_TYPE.as_str()).unwrap().contains("text/html") {
                 let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client).await;
                 if page_download_response.is_ok() {
-                    page_response.body = page_download_response.unwrap().body
+                    page_response.body = page_download_response.unwrap().body;
                 }
             }
 
             // todo!("TDD approach to retrieve head(✅), redirect(✅), final content(✅), parse and return found links");
-            // todo: update PageResponse with final_url_after_redirects
             // todo work with dynamic filtering and mapping classes, like spring routing, etc.
         }
         page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));

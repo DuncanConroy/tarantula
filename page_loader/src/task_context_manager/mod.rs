@@ -34,7 +34,7 @@ impl TaskManager for DefaultTaskManager {
         let cloned_manager = manager.clone();
         thread::Builder::new()
             .name("DefaultTaskManager garbage collection".to_owned())
-            .spawn(move || DefaultTaskManager::run(cloned_manager, Duration::from_secs(gc_timeout_ms as u64)))
+            .spawn(move || DefaultTaskManager::run(cloned_manager, Duration::from_millis(gc_timeout_ms as u64)))
             .unwrap();
 
         manager
