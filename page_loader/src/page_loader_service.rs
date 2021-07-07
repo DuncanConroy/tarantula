@@ -1,8 +1,9 @@
 use std::borrow::Borrow;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
-use log::debug;
+use log::{debug, warn};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -85,6 +86,7 @@ impl PageLoaderService {
                 match event {
                     Command::LoadPage { url, response_channel, task_context, current_depth } => {
                         debug!("received LoadPage command with url: {} on thread {:?}, depth: {}", url, thread::current().name(), current_depth);
+                        println!("received LoadPage command with url: {} on thread {:?}, depth: {}", url, thread::current().name(), current_depth);
                         let tx_task = tx_clone.clone();
                         let local_command_factory = arc_command_factory.clone();
                         tokio::spawn(async move {
@@ -127,14 +129,13 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
             }
         }
 
-        // let page_result = Page::new_root(url.clone(), Some(UriProtocol::HTTPS));
-        // response_channel.send(page_result).await.expect("Could not send result to response channel");
         response_channel.send(crawl_result).await.expect("Could not send result to response channel");
     } else {
         todo!("Proper error handling is required!");
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum Command {
     LoadPage {
         url: String,
@@ -173,7 +174,8 @@ mod tests {
         // can we actually check for the task_manager?
 
         // given
-        let tx = PageLoaderService::init();
+        let stub_page_crawl_command_factory = StubFactory::new();
+        let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
 
         // when
@@ -189,7 +191,8 @@ mod tests {
     #[tokio::test]
     async fn starts_working_on_receiving_load_page_command() {
         // given
-        let tx = PageLoaderService::init();
+        let stub_page_crawl_command_factory = StubFactory::new();
+        let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
         let task_context = create_default_task_context();
 
@@ -206,7 +209,8 @@ mod tests {
     #[tokio::test]
     async fn on_receiving_load_page_command_task_contexts_last_command_received_is_updated() {
         // given
-        let tx = PageLoaderService::init();
+        let stub_page_crawl_command_factory = StubFactory::new();
+        let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
         let task_context = create_default_task_context();
         let initial_last_command_received_instant = task_context.lock().unwrap().get_last_command_received();
@@ -228,7 +232,7 @@ mod tests {
 
     impl StubPageCrawlCommand {
         fn new(url: String) -> StubPageCrawlCommand {
-            let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(url.clone())));
+            let task_context = create_default_task_context();
             StubPageCrawlCommand { url, task_context }
         }
     }
@@ -240,7 +244,7 @@ mod tests {
         }
 
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
-        async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+        async fn crawl(&self, http_client: Box<dyn HttpClient>) -> std::result::Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone());
             if self.url != "https://inner" {
                 // if this is the initial crawl, we want to emulate additional links`
@@ -267,7 +271,9 @@ mod tests {
     impl CommandFactory for StubFactory {
         #[allow(unused)] // necessary, because we're stubbing this and not actually using everything that is provided by the trait signature
         fn create_page_crawl_command(&self, url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
-            Box::new(StubPageCrawlCommand::new(url))
+            let mut command = StubPageCrawlCommand::new(url);
+            command.task_context = task_context;
+            Box::new(command)
         }
     }
 

@@ -18,8 +18,8 @@ impl DomParser {
         }
     }
 
-    pub fn get_links(&self, parent_protocol: &str, source_domain: &str, body: String) -> Option<UriResult> {
-        let dom = Html::parse_document(&body);
+    pub fn get_links(&self, parent_protocol: &str, source_domain: &str, body: &String) -> Option<UriResult> {
+        let dom = Html::parse_document(body);
 
         let mut links = self.extract_links(&parent_protocol, &source_domain, dom.tree);
         let parse_complete_time = Utc::now();
