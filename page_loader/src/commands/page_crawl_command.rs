@@ -1,13 +1,8 @@
-use std::borrow::Borrow;
-use std::ops::Deref;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::header::CONTENT_TYPE;
-
-use linkresult::Link;
 
 use crate::commands::fetch_header_command::FetchHeaderCommand;
 use crate::commands::page_download_command::PageDownloadCommand;
@@ -117,14 +112,12 @@ impl CrawlCommand for PageCrawlCommand {
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
-    use std::collections::HashMap;
     use std::fmt::{Debug, Formatter};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use hyper::{Body, Response, StatusCode};
     use hyper::header::CONTENT_TYPE;
-    use log4rs::append::Append;
     use mockall::*;
     use tokio::time::Instant;
     use uuid::Uuid;

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hyper::{Body, Client, Request, Response};
+use hyper::{Body, Client, Response};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
 
@@ -24,12 +24,14 @@ impl HttpClientImpl {
     }
 
     #[cfg(test)]
+    #[allow(unused_variables)] // allowing, as this should only panic
     async fn send_request(&self, method: &str, uri: String) -> Result<Response<Body>, String> {
         panic!("Don't send requests in test!")
     }
 
     #[cfg(not(test))]
     async fn send_request(&self, method: &str, uri: String) -> Result<Response<Body>, String> {
+        use hyper::Request;
         let req = Request::builder()
             .header("user-agent", self.user_agent.clone())
             .method(method)

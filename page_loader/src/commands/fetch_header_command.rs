@@ -135,7 +135,6 @@ impl FetchHeaderResponse {
 #[cfg(test)]
 mod tests {
     use std::fmt::{Debug, Formatter, Result};
-    use std::pin::Pin;
     use std::time::Duration;
 
     use mockall::*;

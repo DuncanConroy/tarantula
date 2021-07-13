@@ -1,9 +1,9 @@
 use std::borrow::Borrow;
+use std::cmp::max;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 
-use log::{debug, warn};
+use log::debug;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -70,7 +70,7 @@ impl PageLoaderService {
     }
 
     pub fn init_with_factory(page_crawl_command_factory: Box<dyn CommandFactory>) -> Sender<Command> {
-        let buffer_size = num_cpus::get() / 2;
+        let buffer_size = max(num_cpus::get() / 2, 2);
         let (tx, mut rx) = mpsc::channel(buffer_size);
         let tx_clone = tx.clone();
 
@@ -86,22 +86,22 @@ impl PageLoaderService {
                 match event {
                     Command::LoadPage { url, response_channel, task_context, current_depth } => {
                         debug!("received LoadPage command with url: {} on thread {:?}, depth: {}", url, thread::current().name(), current_depth);
-                        println!("received LoadPage command with url: {} on thread {:?}, depth: {}", url, thread::current().name(), current_depth);
                         let tx_task = tx_clone.clone();
                         let local_command_factory = arc_command_factory.clone();
                         tokio::spawn(async move {
                             let page_crawl_command = local_command_factory.create_page_crawl_command(url, task_context, current_depth);
                             do_load(response_channel, page_crawl_command, tx_task).await
-                        }).await.expect("Problem with spawned worker thread for LoadPageCommand");
+                        });// Don't await here. Otherwise all processes might hang indefinitely
                     }
                     Command::CrawlDomainCommand { url, response_channel, .. } => {
                         debug!("received CrawlDomainCommand with url: {} on thread {:?}", url, thread::current().name());
                         let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(url.clone())));
                         arc_page_loader_service_clone.task_manager.lock().unwrap().add_task(task_context.clone());
-                        tx_clone.send(LoadPage { url, response_channel, task_context: task_context.clone(), current_depth: 0 }).await;
+                        tx_clone.send(LoadPage { url, response_channel, task_context: task_context.clone(), current_depth: 0 }).await.expect("Problem with spawned worker thread for CrawlDomainCommand");
                     }
                 }
             }
+            debug!("End of while loop >>PageLoaderService")
         });
 
         arc_page_loader_service.mpsc_sender.as_ref().unwrap().clone()
@@ -120,16 +120,23 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
     // new approach
     let user_agent = page_crawl_command.get_task_context().lock().unwrap().get_config().lock().unwrap().user_agent.clone();
     let http_client = Box::new(HttpClientImpl::new(user_agent));
-    if let Ok(Some(crawl_result)) = page_crawl_command.crawl(http_client).await {
-        let task_context = page_crawl_command.get_task_context();
-        if crawl_result.borrow().links.is_some() {
-            for link in crawl_result.borrow().links.as_ref().unwrap() {
-                let resp = response_channel.clone();
-                tx.send(LoadPage { url: String::from(link.uri.clone()), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 }).await;
+    let page_response = page_crawl_command.crawl(http_client).await;
+    if let Ok(page_response_result) = page_response {
+        if let Some(crawl_result) = page_response_result {
+            let links = crawl_result.borrow().links.clone();
+            let task_context = page_crawl_command.get_task_context();
+            if links.is_some() {
+                for link in links.as_ref().unwrap() {
+                    let resp = response_channel.clone();
+                    let load_page_command = LoadPage { url: String::from(link.uri.clone()), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 };
+                    tx.send(load_page_command).await.expect(&format!("Issue sending LoadPage command to tx: {:?}", link.uri.clone()));
+                }
             }
-        }
 
-        response_channel.send(crawl_result).await.expect("Could not send result to response channel");
+            response_channel.send(crawl_result).await.expect("Could not send result to response channel");
+        } else {
+            todo!("Proper error handling");
+        }
     } else {
         todo!("Proper error handling is required!");
     }
@@ -152,8 +159,6 @@ pub enum Command {
 
 #[cfg(test)]
 mod tests {
-    use std::pin::Pin;
-
     use async_trait::async_trait;
 
     use linkresult::Link;
@@ -176,7 +181,7 @@ mod tests {
         // given
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
-        let (resp_tx, mut resp_rx) = mpsc::channel(1);
+        let (resp_tx, mut resp_rx) = mpsc::channel(2);
 
         // when
         let send_result = tx.send(CrawlDomainCommand { url: String::from("https://example.com"), response_channel: resp_tx.clone(), last_crawled_timestamp: 0 }).await;
@@ -193,7 +198,7 @@ mod tests {
         // given
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
-        let (resp_tx, mut resp_rx) = mpsc::channel(1);
+        let (resp_tx, mut resp_rx) = mpsc::channel(2);
         let task_context = create_default_task_context();
 
         // when
@@ -211,7 +216,7 @@ mod tests {
         // given
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
-        let (resp_tx, mut resp_rx) = mpsc::channel(1);
+        let (resp_tx, mut resp_rx) = mpsc::channel(2);
         let task_context = create_default_task_context();
         let initial_last_command_received_instant = task_context.lock().unwrap().get_last_command_received();
 
@@ -246,9 +251,20 @@ mod tests {
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
         async fn crawl(&self, http_client: Box<dyn HttpClient>) -> std::result::Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone());
-            if self.url != "https://inner" {
+            if !self.url.starts_with("https://inner") {
                 // if this is the initial crawl, we want to emulate additional links`
-                response.links = Some(vec![Link::from_str("https://inner")]);
+                response.links = Some(vec![
+                    Link::from_str("https://inner1"),
+                    Link::from_str("https://inner2"),
+                    Link::from_str("https://inner3"),
+                    Link::from_str("https://inner4"),
+                    Link::from_str("https://inner5"),
+                    Link::from_str("https://inner6"),
+                    Link::from_str("https://inner7"),
+                    Link::from_str("https://inner8"),
+                    Link::from_str("https://inner9"),
+                    Link::from_str("https://inner10"),
+                ]);
             }
             Ok(Some(response))
         }
@@ -282,7 +298,7 @@ mod tests {
         // given
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
-        let (resp_tx, mut resp_rx) = mpsc::channel(1);
+        let (resp_tx, mut resp_rx) = mpsc::channel(2);
         let task_context = create_default_task_context();
 
         // when
@@ -290,11 +306,19 @@ mod tests {
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = PageResponse::new("https://example.com".into());
-        let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
-        let expected_result = PageResponse::new("https://inner".into());
-        let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
+        let mut expected_results = vec![PageResponse::new("https://example.com".into())];
+        for i in 1..=10 {
+            expected_results.push(PageResponse::new(format!("https://inner{}", i)));
+        }
+
+        for i in 1..=11 {
+            let actual_result = resp_rx.recv().await.unwrap();
+            let expected_result = expected_results
+                .drain_filter(|it: &mut PageResponse| it.original_requested_url == actual_result.original_requested_url);
+            println!("Got {:?}", actual_result);
+            assert_eq!(expected_result.count(), 1);
+        }
+
+        assert_eq!(expected_results.len(), 0);
     }
 }
