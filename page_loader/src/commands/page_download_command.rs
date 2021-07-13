@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -123,7 +122,6 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         let task_config = TaskConfig::new("https://example.com".into());
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
-        let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
         let mut mock_http_client = Box::new(MockMyHttpClient::new());
         mock_http_client.expect_get().returning(|_| Ok(Response::builder()
             .status(200)

@@ -1,4 +1,4 @@
-#![cfg_attr(test, feature(proc_macro_hygiene))]
+#![cfg_attr(test, feature(proc_macro_hygiene, drain_filter))]
 
 // Event-driven page loader
 
