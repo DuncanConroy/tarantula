@@ -10,6 +10,7 @@ use dom_parser::DomParser;
 use linkresult::LinkTypeChecker;
 use linkresult::uri_service::UriService;
 
+use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::task_context::robots_service::{RobotsService, RobotsTxt};
 
 pub trait TaskContextInit {
@@ -27,6 +28,8 @@ pub trait TaskContext: Sync + Send + Debug {
 
 pub trait TaskContextServices: Sync + Send + Debug {
     fn get_uri_service(&self) -> Arc<UriService>;
+    fn get_dom_parser(&self) -> Arc<DomParser>;
+    fn get_http_client(&self) -> Arc<dyn HttpClient>;
 }
 
 pub trait KnownLinks: Sync + Send + Debug {
@@ -43,6 +46,7 @@ pub struct DefaultTaskContext {
     link_type_checker: Arc<LinkTypeChecker>,
     uri_service: Arc<UriService>,
     robots_service: Arc<dyn RobotsTxt>,
+    http_client: Arc<dyn HttpClient>,
     uuid: Uuid,
     last_command_received: Instant,
     all_known_links: Arc<Mutex<Vec<String>>>,
@@ -56,6 +60,7 @@ impl TaskContextInit for DefaultTaskContext {
         let dom_parser = Arc::new(DomParser::new(link_type_checker.clone()));
         let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         let robots_service = Arc::new(RobotsService::new(task_config.lock().unwrap().user_agent.clone()));
+        let http_client = Arc::new(HttpClientImpl::new(task_config.lock().unwrap().user_agent.clone()));
         let uuid = Uuid::new_v4();
         let all_known_links = Arc::new(Mutex::new(vec![]));
         let last_command_received = Instant::now();
@@ -65,6 +70,7 @@ impl TaskContextInit for DefaultTaskContext {
             link_type_checker,
             uri_service,
             robots_service,
+            http_client,
             uuid,
             last_command_received,
             all_known_links,
@@ -102,6 +108,8 @@ impl TaskContextServices for DefaultTaskContext {
     fn get_uri_service(&self) -> Arc<UriService> {
         self.uri_service.clone()
     }
+    fn get_dom_parser(&self) -> Arc<DomParser> { self.dom_parser.clone() }
+    fn get_http_client(&self) -> Arc<dyn HttpClient> { self.http_client.clone() }
 }
 
 impl KnownLinks for DefaultTaskContext {

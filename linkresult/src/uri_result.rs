@@ -33,7 +33,7 @@ pub struct Link {
     pub uri: String,
     pub scope: Option<UriScope>,
     pub protocol: Option<UriProtocol>,
-    pub source_tag: Option<Node>,
+    pub source_tag: Option<String>,
 }
 
 impl Link {

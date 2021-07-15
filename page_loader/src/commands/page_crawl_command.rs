@@ -3,6 +3,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::header::CONTENT_TYPE;
+use log::debug;
+
+use linkresult::Link;
 
 use crate::commands::fetch_header_command::FetchHeaderCommand;
 use crate::commands::page_download_command::PageDownloadCommand;
@@ -14,7 +17,8 @@ use crate::task_context::task_context::FullTaskContext;
 #[async_trait]
 pub trait CrawlCommand: Sync + Send {
     fn get_url_clone(&self) -> String;
-    async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String>;
+    fn get_page_request(&self) -> Arc<Mutex<PageRequest>>;
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>) -> Result<Option<PageResponse>, String>;
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
 }
@@ -44,6 +48,7 @@ impl PageCrawlCommand {
         let config_locked = config.lock().unwrap();
         if config_locked.maximum_depth > 0 &&
             self.current_depth > config_locked.maximum_depth {
+            debug!("Dropping requested url: {} -> maximum_depth reached: {}", &request_object_locked.url, config_locked.maximum_depth);
             return false;
         }
         // at this point, the config isn't required anymore and can therefore be dropped
@@ -52,17 +57,19 @@ impl PageCrawlCommand {
 
         let task_context_locked = task_context.lock().unwrap();
         if task_context_locked.get_all_known_links().lock().unwrap().contains(&request_object_locked.url) {
+            debug!("Dropping requested url: {} -> already known", &request_object_locked.url);
             return false;
         }
 
         if !task_context_locked.can_access(&request_object_locked.url) {
+            debug!("Dropping requested url: {} -> can't access (robots.txt)", &request_object_locked.url);
             return false;
         }
 
         true
     }
 
-    async fn perform_crawl_internal(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+    async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
         let request_object_cloned = self.request_object.clone();
         let mut page_response = PageResponse::new(request_object_cloned.lock().unwrap().url.clone());
         let fetch_header_response = self.fetch_header_command.fetch_header(request_object_cloned, http_client, None).await;
@@ -79,6 +86,9 @@ impl PageCrawlCommand {
                 let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client).await;
                 if page_download_response.is_ok() {
                     page_response.body = page_download_response.unwrap().body;
+                    page_response.links = self.extract_links(page_response.body.as_ref());
+                } else {
+                    panic!("proper error handling needed")
                 }
             }
 
@@ -88,13 +98,30 @@ impl PageCrawlCommand {
         page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
         Ok(Some(page_response))
     }
+
+    fn extract_links(&self, body: Option<&String>) -> Option<Vec<Link>> {
+        // todo!("TEST")
+        if let Some(body_content) = body {
+            let request_object = self.request_object.lock().unwrap();
+            let dom_parser = request_object.task_context.lock().unwrap().get_dom_parser();
+            let links = dom_parser.get_links(
+                &request_object.get_protocol(),
+                &request_object.get_host(),
+                body_content).unwrap();
+
+            return Some(links.links);
+        }
+        return None;
+    }
 }
 
 #[async_trait]
 impl CrawlCommand for PageCrawlCommand {
     fn get_url_clone(&self) -> String { self.request_object.lock().unwrap().url.clone() }
 
-    async fn crawl(&self, http_client: Box<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+    fn get_page_request(&self) -> Arc<Mutex<PageRequest>> { self.request_object.clone() }
+
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
         if !self.verify_crawlability() {
             return Ok(None);
         }
@@ -122,6 +149,7 @@ mod tests {
     use tokio::time::Instant;
     use uuid::Uuid;
 
+    use dom_parser::DomParser;
     use linkresult::uri_service::UriService;
 
     use crate::commands::fetch_header_command::{FetchHeaderResponse, Redirect};
@@ -144,6 +172,8 @@ mod tests {
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;
+            fn get_dom_parser(&self) ->Arc<DomParser>;
+            fn get_http_client(&self) -> Arc<dyn HttpClient>;
         }
         impl KnownLinks for MyTaskContext{
             fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
@@ -161,6 +191,7 @@ mod tests {
     }
     mock! {
         #[async_trait]
+        #[derive(Debug)]
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
@@ -173,7 +204,7 @@ mod tests {
         MyFetchHeaderCommand {}
         #[async_trait]
         impl FetchHeaderCommand for MyFetchHeaderCommand{
-            async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> std::result::Result<(FetchHeaderResponse, Box<dyn HttpClient>), String>;
+            async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> std::result::Result<(FetchHeaderResponse, Arc<dyn HttpClient>), String>;
         }
     }
     mock! {
@@ -181,7 +212,7 @@ mod tests {
         MyPageDownloadCommand {}
         #[async_trait]
         impl PageDownloadCommand for MyPageDownloadCommand{
-                async fn download_page(&self, uri: String, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
+                async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
         }
     }
 
@@ -197,8 +228,8 @@ mod tests {
         }))
     }
 
-    fn get_mock_http_client() -> Box<MockMyHttpClient> {
-        Box::new(MockMyHttpClient::new())
+    fn get_mock_http_client() -> Arc<MockMyHttpClient> {
+        Arc::new(MockMyHttpClient::new())
     }
 
     #[tokio::test]

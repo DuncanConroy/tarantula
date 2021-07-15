@@ -8,6 +8,8 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
+use linkresult::UriScope;
+
 use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::commands::page_download_command::DefaultPageDownloadCommand;
@@ -119,26 +121,63 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
 
     // new approach
     let user_agent = page_crawl_command.get_task_context().lock().unwrap().get_config().lock().unwrap().user_agent.clone();
-    let http_client = Box::new(HttpClientImpl::new(user_agent));
+    let http_client = page_crawl_command.get_task_context().lock().unwrap().get_http_client();
     let page_response = page_crawl_command.crawl(http_client).await;
     if let Ok(page_response_result) = page_response {
         if let Some(crawl_result) = page_response_result {
+            add_links_to_known_list(&page_crawl_command, &crawl_result);
             let links = crawl_result.borrow().links.clone();
             let task_context = page_crawl_command.get_task_context();
             if links.is_some() {
-                for link in links.as_ref().unwrap() {
-                    let resp = response_channel.clone();
-                    let load_page_command = LoadPage { url: String::from(link.uri.clone()), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 };
-                    tx.send(load_page_command).await.expect(&format!("Issue sending LoadPage command to tx: {:?}", link.uri.clone()));
+                let mut links_deduped = links.unwrap();
+                links_deduped.dedup_by(|a, b| a.uri.eq(&b.uri));
+                for link in links_deduped {
+                    // todo!("TEST")
+                    if link.scope.is_none() { continue; }
+
+                    match link.scope.as_ref().unwrap() {
+                        UriScope::Root |
+                        UriScope::SameDomain |
+                        UriScope::DifferentSubDomain => {
+                            let request = page_crawl_command.get_page_request();
+                            let protocol = request.lock().unwrap().get_protocol();
+                            let host = request.lock().unwrap().get_host();
+                            drop(request);
+                            let url = task_context.lock().unwrap().get_uri_service().form_full_url(
+                                &protocol,
+                                &String::from(link.uri.clone()),
+                                &host,
+                                &Some(page_crawl_command.get_url_clone()),
+                            ).to_string();
+
+
+                            let resp = response_channel.clone();
+                            let load_page_command = LoadPage { url: url.clone(), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 };
+                            tx.send(load_page_command).await.expect(&format!("Issue sending LoadPage command to tx: {:?}", url.clone()));
+                        }
+                        _ => { continue; }
+                    }
                 }
             }
 
             response_channel.send(crawl_result).await.expect("Could not send result to response channel");
         } else {
-            todo!("Proper error handling");
+            // todo: send some response to response channel - we got nothing here :)
+            // todo!("Proper error handling");
         }
     } else {
         todo!("Proper error handling is required!");
+    }
+}
+
+fn add_links_to_known_list(page_crawl_command: &Box<dyn CrawlCommand>, crawl_result: &PageResponse) {
+    page_crawl_command.get_task_context().lock().unwrap()
+        .get_all_known_links().lock().unwrap()
+        .push(crawl_result.original_requested_url.clone());
+    if let Some(final_url) = &crawl_result.final_url_after_redirects {
+        page_crawl_command.get_task_context().lock().unwrap()
+            .get_all_known_links().lock().unwrap()
+            .push(final_url.clone());
     }
 }
 
@@ -248,8 +287,10 @@ mod tests {
             self.url.clone()
         }
 
+        fn get_page_request(&self) -> Arc<Mutex<PageRequest>>; //TODO TODO TODO
+
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
-        async fn crawl(&self, http_client: Box<dyn HttpClient>) -> std::result::Result<Option<PageResponse>, String> {
+        async fn crawl(&self, http_client: Arc<dyn HttpClient>) -> std::result::Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone());
             if !self.url.starts_with("https://inner") {
                 // if this is the initial crawl, we want to emulate additional links`

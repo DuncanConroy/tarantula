@@ -13,14 +13,14 @@ use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait PageDownloadCommand: Sync + Send {
-    async fn download_page(&self, uri: String, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
+    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
 }
 
 pub struct DefaultPageDownloadCommand {}
 
 #[async_trait]
 impl PageDownloadCommand for DefaultPageDownloadCommand {
-    async fn download_page(&self, uri: String, http_client: Box<dyn HttpClient>) -> Result<PageDownloadResponse, String> {
+    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<PageDownloadResponse, String> {
         let start_time = DateTime::from(Utc::now());
 
         let response = http_client.get(uri.clone()).await.unwrap();
@@ -72,6 +72,7 @@ mod tests {
     use tokio::time::Instant;
     use uuid::Uuid;
 
+    use dom_parser::DomParser;
     use linkresult::uri_service::UriService;
 
     use crate::task_context::robots_service::RobotsTxt;
@@ -91,6 +92,8 @@ mod tests {
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;
+            fn get_dom_parser(&self) ->Arc<DomParser>;
+            fn get_http_client(&self) -> Arc<dyn HttpClient>;
         }
         impl KnownLinks for MyTaskContext{
             fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
@@ -107,6 +110,7 @@ mod tests {
         }
     }
     mock! {
+        #[derive(Debug)]
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
