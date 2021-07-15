@@ -48,7 +48,7 @@ impl DomParser {
                     uri: link.trim().to_string(),
                     scope: self.link_type_checker.get_uri_scope(&host, &link),
                     protocol: self.link_type_checker.get_uri_protocol(&parent_protocol, &link),
-                    source_tag: Some(current_node.clone()),
+                    source_tag: Some(format!("{:?}", current_node.as_element().unwrap())),
                 })
             })
             .collect()

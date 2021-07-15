@@ -66,7 +66,14 @@ fn normalize_url(uri: String, parent_uri: &Option<String>) -> String {
         return uri;
     }
 
-    let absolute_uri = format!("{}{}", parent_uri.as_ref().unwrap(), uri);
+    let mut modified_parent_uri = String::from("");
+    if parent_uri.is_some() {
+        modified_parent_uri = parent_uri.as_ref().unwrap().clone();
+        if !modified_parent_uri.ends_with("/") {
+            modified_parent_uri += "/"
+        }
+    }
+    let absolute_uri = format!("{}{}", modified_parent_uri, uri);
     trace!("absolute: {}", absolute_uri);
 
     let parts = absolute_uri.split("/");
@@ -127,6 +134,7 @@ mod tests {
     fn normalize_url() {
         let input = vec![
             ("https://www.example.com/about/appsecurity/tools/", "../../../about/appsecurity/research/presentations/", "https://www.example.com/about/appsecurity/research/presentations/"),
+            ("https://www.example.com/about/appsecurity/tools", "../../../about/appsecurity/research/presentations/", "https://www.example.com/about/appsecurity/research/presentations/"),
         ];
 
         let host = "example.com";

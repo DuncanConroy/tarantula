@@ -15,14 +15,14 @@ use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Box<dyn HttpClient>), String>;
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Arc<dyn HttpClient>), String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Box<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Box<dyn HttpClient>), String> {
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Arc<dyn HttpClient>), String> {
         let start_time = DateTime::from(Utc::now());
         let mut uri = page_request.lock().unwrap().url.clone();
         let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
@@ -142,6 +142,7 @@ mod tests {
     use tokio::time::Instant;
     use uuid::Uuid;
 
+    use dom_parser::DomParser;
     use linkresult::LinkTypeChecker;
     use linkresult::uri_service::UriService;
 
@@ -162,6 +163,8 @@ mod tests {
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;
+            fn get_dom_parser(&self) ->Arc<DomParser>;
+            fn get_http_client(&self) -> Arc<dyn HttpClient>;
         }
         impl KnownLinks for MyTaskContext{
             fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
@@ -178,6 +181,7 @@ mod tests {
         }
     }
     mock! {
+        #[derive(Debug)]
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
@@ -186,8 +190,8 @@ mod tests {
         }
     }
 
-    fn get_mock_http_client() -> Box<MockMyHttpClient> {
-        Box::new(MockMyHttpClient::new())
+    fn get_mock_http_client() -> Arc<MockMyHttpClient> {
+        Arc::new(MockMyHttpClient::new())
     }
 
     #[tokio::test]
