@@ -18,7 +18,13 @@ impl UriService {
 
     pub fn form_full_url(&self, protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
         trace!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
-        let to_uri = |input: &str| String::from(input).parse::<hyper::Uri>().unwrap();
+        let to_uri = |input: &str| {
+            if let Ok(parsed_uri) = String::from(input).parse::<hyper::Uri>() {
+                parsed_uri
+            } else {
+                panic!("Problem with uri {}", uri)
+            }
+        };
         let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
             let normalized_uri = normalize_url(uri.into(), parent_uri);
             let adjusted_uri = prefix_uri_with_forward_slash(&normalized_uri);
