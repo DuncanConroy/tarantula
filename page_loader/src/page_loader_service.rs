@@ -204,6 +204,7 @@ mod tests {
 
     use crate::http::http_client::HttpClient;
     use crate::page_loader_service::Command::{CrawlDomainCommand, LoadPage};
+    use crate::page_request::PageRequest;
     use crate::page_response::PageResponse;
     use crate::task_context::task_context::{DefaultTaskContext, TaskContext, TaskContextInit};
 
@@ -272,12 +273,14 @@ mod tests {
     struct StubPageCrawlCommand {
         url: String,
         task_context: Arc<Mutex<dyn FullTaskContext>>,
+        page_request: Arc<Mutex<PageRequest>>,
     }
 
     impl StubPageCrawlCommand {
         fn new(url: String) -> StubPageCrawlCommand {
             let task_context = create_default_task_context();
-            StubPageCrawlCommand { url, task_context }
+            let page_request = Arc::new(Mutex::new(PageRequest::new(url.clone(), None, task_context.clone())));
+            StubPageCrawlCommand { url, task_context, page_request }
         }
     }
 
@@ -287,7 +290,9 @@ mod tests {
             self.url.clone()
         }
 
-        fn get_page_request(&self) -> Arc<Mutex<PageRequest>>; //TODO TODO TODO
+        fn get_page_request(&self) -> Arc<Mutex<PageRequest>> {
+            self.page_request.clone()
+        }
 
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
         async fn crawl(&self, http_client: Arc<dyn HttpClient>) -> std::result::Result<Option<PageResponse>, String> {
