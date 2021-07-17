@@ -134,7 +134,6 @@ impl FetchHeaderResponse {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::{Debug, Formatter, Result};
     use std::time::Duration;
 
     use mockall::*;
@@ -175,13 +174,8 @@ mod tests {
             fn get_crawl_delay(&self) -> Option<Duration>;
         }
         impl FullTaskContext for MyTaskContext{}
-
-        impl Debug for MyTaskContext {
-            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> Result;
-        }
     }
     mock! {
-        #[derive(Debug)]
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
@@ -202,11 +196,12 @@ mod tests {
         let task_config = TaskConfig::new("https://example.com".into());
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
-        let mut mock_http_client = get_mock_http_client();
+        let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
             .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
 
         // when: fetch is invoked
         let result = command.fetch_header(
@@ -231,7 +226,7 @@ mod tests {
         let mut task_config = TaskConfig::new("https://example.com".into());
         task_config.maximum_redirects = 2;
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
-        let mut mock_http_client = get_mock_http_client();
+        let mut mock_http_client = MockMyHttpClient::new();
         let mut sequence = Sequence::new();
         mock_http_client.expect_head()
             .with(eq(String::from("https://example.com")))
@@ -257,6 +252,7 @@ mod tests {
             .header("x-custom", "Final destination")
             .body(Body::from(""))
             .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
         let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
 
         // when: fetch is invoked

@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use scraper::Node;
 
 #[derive(Debug, Clone)]
 pub struct ResponseTimings {

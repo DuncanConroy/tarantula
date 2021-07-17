@@ -6,19 +6,16 @@ use scraper::{Html, Node};
 
 use linkresult::{Link, LinkTypeChecker, UriResult};
 
-#[derive(Debug)]
-pub struct DomParser {
+pub trait DomParser: Sync + Send {
+    fn get_links(&self, parent_protocol: &str, source_domain:&str, body: &String) -> Option<UriResult>;
+}
+
+pub struct DomParserService {
     link_type_checker: Arc<LinkTypeChecker>,
 }
 
-impl DomParser {
-    pub fn new(link_type_checker: Arc<LinkTypeChecker>) -> DomParser {
-        DomParser {
-            link_type_checker,
-        }
-    }
-
-    pub fn get_links(&self, parent_protocol: &str, source_domain: &str, body: &String) -> Option<UriResult> {
+impl DomParser for DomParserService {
+    fn get_links(&self, parent_protocol: &str, source_domain: &str, body: &String) -> Option<UriResult> {
         let dom = Html::parse_document(body);
 
         let mut links = self.extract_links(&parent_protocol, &source_domain, dom.tree);
@@ -30,7 +27,14 @@ impl DomParser {
             parse_complete_time,
         })
     }
+}
 
+impl DomParserService{
+    pub fn new(link_type_checker: Arc<LinkTypeChecker>) -> DomParserService {
+        DomParserService {
+            link_type_checker,
+        }
+    }
     fn extract_links(
         &self,
         parent_protocol: &str,
@@ -73,7 +77,7 @@ mod tests {
         let html_file = read_to_string(&d).unwrap();
 
         let host = "www.example.com";
-        let instance = DomParser::new(Arc::new(LinkTypeChecker::new(host)));
+        let instance = DomParserService::new(Arc::new(LinkTypeChecker::new(host)));
         let input = Html::parse_document(html_file.as_str());
         let result = instance.extract_links("https", host, input.tree);
         assert_eq!(result.len(), 451 + 79); // href: 451, (data-)?src: 79

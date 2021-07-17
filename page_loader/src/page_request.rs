@@ -5,8 +5,10 @@ use hyper::Uri;
 use log::debug;
 
 use crate::task_context::task_context::FullTaskContext;
+use std::fmt::Debug;
+use std::fmt;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PageRequest {
     pub url: String,
     pub last_crawled_timestamp: Option<DateTime<Utc>>,
@@ -36,5 +38,14 @@ impl PageRequest {
 
     pub fn get_uri(&self) -> Uri {
         self.url.parse::<hyper::Uri>().unwrap()
+    }
+}
+
+impl Debug for PageRequest {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("PageRequest")
+            .field("url", &self.url)
+            .field("last_crawled_timestamp", &self.last_crawled_timestamp)
+            .finish()
     }
 }

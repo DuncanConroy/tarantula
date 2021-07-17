@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -8,7 +8,6 @@ use log::trace;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
-use crate::page_request::PageRequest;
 use crate::response_timings::ResponseTimings;
 
 #[async_trait]
@@ -64,7 +63,7 @@ impl PageDownloadResponse {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::{Debug, Formatter, Result};
+    use std::sync::{Mutex};
     use std::time::Duration;
 
     use hyper::{Body, Response};
@@ -104,13 +103,8 @@ mod tests {
             fn get_crawl_delay(&self) -> Option<Duration>;
         }
         impl FullTaskContext for MyTaskContext{}
-
-        impl Debug for MyTaskContext {
-            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> Result;
-        }
     }
     mock! {
-        #[derive(Debug)]
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
@@ -126,11 +120,12 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         let task_config = TaskConfig::new("https://example.com".into());
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
-        let mut mock_http_client = Box::new(MockMyHttpClient::new());
+        let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_get().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from("Hello World"))
             .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
 
         // when: fetch is invoked
         let result = command.download_page("https://example.com".into(), mock_http_client).await;

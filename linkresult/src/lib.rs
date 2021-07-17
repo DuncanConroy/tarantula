@@ -21,7 +21,6 @@ enum RegexType {
     UnknownPrefix,
 }
 
-#[derive(Debug)]
 pub struct LinkTypeChecker {
     regexes: Arc<HashMap<RegexType, Regex>>,
 }

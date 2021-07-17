@@ -12,7 +12,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex as TokioMutex;
 use tokio_stream::StreamExt;
 
-use dom_parser::DomParser;
+use dom_parser::{DomParser, DomParserService};
 use linkresult::{Link, LinkTypeChecker, uri_result, UriResult};
 use linkresult::uri_service::UriService;
 use page::Page;
@@ -67,7 +67,7 @@ impl RunConfig {
 struct AppContext {
     root_uri: String,
     link_type_checker: Arc<LinkTypeChecker>,
-    dom_parser: Arc<DomParser>,
+    dom_parser: Arc<dyn DomParser>,
     uri_service: Arc<UriService>,
 }
 
@@ -78,7 +78,7 @@ impl AppContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let host = hyper_uri.host().unwrap();
         let link_type_checker = Arc::new(LinkTypeChecker::new(host));
-        let dom_parser = Arc::new(DomParser::new(link_type_checker.clone()));
+        let dom_parser = Arc::new(DomParserService::new(link_type_checker.clone()));
         let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         AppContext {
             root_uri: uri,
