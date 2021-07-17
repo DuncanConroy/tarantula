@@ -308,11 +308,12 @@ mod tests {
         let (resp_tx, mut resp_rx) = mpsc::channel(1);
 
         // when
-        let send_result = tx.send(CrawlDomainCommand { url: String::from("https://example.com"), response_channel: resp_tx.clone(), last_crawled_timestamp: 0 }).await;
+        // NOTE: use "/inner" in the url to trick the StubPageCrawlCommand
+        let send_result = tx.send(CrawlDomainCommand { url: String::from("https://example.com/inner"), response_channel: resp_tx.clone(), last_crawled_timestamp: 0 }).await;
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = PageResponse::new("https://example.com".into());
+        let expected_result = PageResponse::new("https://example.com/inner".into());
         let actual_result = resp_rx.recv().await.unwrap();
         assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
     }
@@ -326,11 +327,12 @@ mod tests {
         let task_context = create_default_task_context();
 
         // when
-        let send_result = tx.send(LoadPageCommand { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
+        // NOTE: use "/inner" in the url to trick the StubPageCrawlCommand
+        let send_result = tx.send(LoadPageCommand { url: String::from("https://example.com/inner"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = PageResponse::new("https://example.com".into());
+        let expected_result = PageResponse::new("https://example.com/inner".into());
         let actual_result = resp_rx.recv().await.unwrap();
         assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
     }
