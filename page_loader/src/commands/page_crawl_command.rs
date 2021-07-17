@@ -184,7 +184,6 @@ mod tests {
         }
         impl RobotsTxt for MyTaskContext{
             fn can_access(&self, item_uri: &str) -> bool;
-            fn get_crawl_delay(&self) -> Option<Duration>;
         }
         impl FullTaskContext for MyTaskContext{}
     }
