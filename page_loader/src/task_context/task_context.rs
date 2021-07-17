@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -6,18 +5,20 @@ use hyper::Uri;
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use dom_parser::DomParser;
+use dom_parser::{DomParser, DomParserService};
 use linkresult::LinkTypeChecker;
 use linkresult::uri_service::UriService;
 
 use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::task_context::robots_service::{RobotsService, RobotsTxt};
+use std::fmt;
+use std::fmt::Debug;
 
 pub trait TaskContextInit {
     fn init(uri: String) -> Self;
 }
 
-pub trait TaskContext: Sync + Send + Debug {
+pub trait TaskContext: Sync + Send  {
     fn get_uuid_clone(&self) -> Uuid;
     fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
     fn get_url(&self) -> String;
@@ -26,23 +27,23 @@ pub trait TaskContext: Sync + Send + Debug {
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
 }
 
-pub trait TaskContextServices: Sync + Send + Debug {
+pub trait TaskContextServices: Sync + Send {
     fn get_uri_service(&self) -> Arc<UriService>;
-    fn get_dom_parser(&self) -> Arc<DomParser>;
+    fn get_dom_parser(&self) -> Arc<dyn DomParser>;
     fn get_http_client(&self) -> Arc<dyn HttpClient>;
 }
 
-pub trait KnownLinks: Sync + Send + Debug {
+pub trait KnownLinks: Sync + Send {
     fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
     fn add_known_link(&self, link: String);
 }
 
 pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + RobotsTxt {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct DefaultTaskContext {
     task_config: Arc<Mutex<TaskConfig>>,
-    dom_parser: Arc<DomParser>,
+    dom_parser: Arc<dyn DomParser>,
     link_type_checker: Arc<LinkTypeChecker>,
     uri_service: Arc<UriService>,
     robots_service: Arc<dyn RobotsTxt>,
@@ -57,7 +58,7 @@ impl TaskContextInit for DefaultTaskContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let task_config = Arc::new(Mutex::new(TaskConfig::new(uri)));
         let link_type_checker = Arc::new(LinkTypeChecker::new(hyper_uri.host().unwrap()));
-        let dom_parser = Arc::new(DomParser::new(link_type_checker.clone()));
+        let dom_parser = Arc::new(DomParserService::new(link_type_checker.clone()));
         let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         let robots_service = Arc::new(RobotsService::new(task_config.lock().unwrap().user_agent.clone()));
         let http_client = Arc::new(HttpClientImpl::new(task_config.lock().unwrap().user_agent.clone()));
@@ -108,7 +109,7 @@ impl TaskContextServices for DefaultTaskContext {
     fn get_uri_service(&self) -> Arc<UriService> {
         self.uri_service.clone()
     }
-    fn get_dom_parser(&self) -> Arc<DomParser> { self.dom_parser.clone() }
+    fn get_dom_parser(&self) -> Arc<dyn DomParser> { self.dom_parser.clone() }
     fn get_http_client(&self) -> Arc<dyn HttpClient> { self.http_client.clone() }
 }
 

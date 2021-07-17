@@ -16,7 +16,7 @@ pub trait RobotsTxtInit {
     async fn init(&mut self, uri: Uri);
 }
 
-pub trait RobotsTxt: Sync + Send + Debug {
+pub trait RobotsTxt: Sync + Send {
     fn can_access(&self, item_uri: &str) -> bool;
     fn get_crawl_delay(&self) -> Option<Duration>;
 }

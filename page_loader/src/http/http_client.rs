@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -7,12 +6,11 @@ use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
 
 #[async_trait]
-pub trait HttpClient: Sync + Send + Debug {
+pub trait HttpClient: Sync + Send {
     async fn head(&self, uri: String) -> Result<Response<Body>, String>;
     async fn get(&self, uri: String) -> Result<Response<Body>, String>;
 }
 
-#[derive(Debug)]
 pub struct HttpClientImpl {
     user_agent: String,
     client: Client<HttpsConnector<HttpConnector>>,

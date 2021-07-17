@@ -5,7 +5,6 @@ use log::trace;
 
 use crate::{LinkTypeChecker, UriProtocol, UriScope};
 
-#[derive(Debug)]
 pub struct UriService {
     link_type_checker: Arc<LinkTypeChecker>,
 }

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use hyper::header::CONTENT_TYPE;
 use log::debug;
 
-use linkresult::Link;
+use linkresult::{Link};
 
 use crate::commands::fetch_header_command::FetchHeaderCommand;
 use crate::commands::page_download_command::PageDownloadCommand;
@@ -107,9 +107,12 @@ impl PageCrawlCommand {
             let links = dom_parser.get_links(
                 &request_object.get_protocol(),
                 &request_object.get_host(),
-                body_content).unwrap();
+                body_content);
 
-            return Some(links.links);
+            return match links {
+                None => {None}
+                Some(links) => Some(links.links)
+            }
         }
         return None;
     }
@@ -139,7 +142,6 @@ impl CrawlCommand for PageCrawlCommand {
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
-    use std::fmt::{Debug, Formatter};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -150,7 +152,8 @@ mod tests {
     use uuid::Uuid;
 
     use dom_parser::DomParser;
-    use linkresult::uri_service::UriService;
+    use linkresult::uri_service::{UriService};
+    use linkresult::{UriResult};
 
     use crate::commands::fetch_header_command::{FetchHeaderResponse, Redirect};
     use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
@@ -184,14 +187,15 @@ mod tests {
             fn get_crawl_delay(&self) -> Option<Duration>;
         }
         impl FullTaskContext for MyTaskContext{}
-
-        impl Debug for MyTaskContext {
-            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> std::fmt::Result;
+    }
+    mock! {
+        MyDomParser {}
+        impl DomParser for MyDomParser {
+            fn get_links(&self, parent_protocol: &str, source_domain:&str, body: &String) -> Option<UriResult>;
         }
     }
     mock! {
         #[async_trait]
-        #[derive(Debug)]
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
@@ -274,11 +278,12 @@ mod tests {
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
-        let mut mock_http_client = get_mock_http_client();
+        let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
             .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
 
         // when: invoked with a current_depth > 0
         let page_crawl_command = PageCrawlCommand::new(
@@ -333,11 +338,12 @@ mod tests {
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
-        let mut mock_http_client = get_mock_http_client();
+        let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
             .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
 
         // when: invoked with a known link
         let page_crawl_command = PageCrawlCommand::new(
@@ -491,12 +497,21 @@ mod tests {
     async fn dowloads_page_if_content_type_is_text_html() {
         // given: a task context that allows crawl
         let url = String::from("https://example.com");
+
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_url().return_const(url.clone());
+
         let config = get_default_task_config();
+
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_get_dom_parser().returning(||{
+            let mut dom_parser = MockMyDomParser::new();
+            dom_parser.expect_get_links().returning(|_,_,_|None);
+            Arc::new(dom_parser)
+        });
+
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| {
             let mut header_response = FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::OK);
@@ -511,6 +526,7 @@ mod tests {
             ));
             Ok((header_response, get_mock_http_client()))
         });
+
         let mut mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         mock_page_download_command.expect_download_page()
             .returning(|uri, _| {

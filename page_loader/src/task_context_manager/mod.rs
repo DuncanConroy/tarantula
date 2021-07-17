@@ -61,7 +61,6 @@ impl DefaultTaskManager {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::{Debug, Formatter, Result};
     use std::sync::Arc;
 
     use mockall::*;
@@ -82,10 +81,6 @@ mod tests {
             fn get_last_command_received(&self) -> Instant;
             fn set_last_command_received(&mut self, instant: Instant);
             fn can_be_garbage_collected(&self, gc_timeout_ms: u64)-> bool;
-        }
-
-        impl Debug for MyTaskContext {
-            fn fmt<'a>(&self, f: &mut Formatter<'a>) -> Result;
         }
     }
 
