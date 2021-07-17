@@ -65,10 +65,6 @@ mod tests {
 
     use super::*;
 
-    fn str_to_links(links: Vec<&str>) -> Vec<Link> {
-        links.iter().map(|it| Link::from_str(it)).collect()
-    }
-
     #[test]
     fn extract_links_returns_correct_links_and_nodes() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

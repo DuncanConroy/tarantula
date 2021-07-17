@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use hyper::Uri;
-use log::debug;
+use log::trace;
 
 use crate::task_context::task_context::FullTaskContext;
 use std::fmt::Debug;
@@ -26,13 +26,13 @@ impl PageRequest {
 
     pub fn get_protocol(&self) -> String {
         let uri = self.get_uri();
-        debug!("get protocol: {}", uri);
+        trace!("get protocol: {}", uri);
         uri.scheme_str().unwrap().to_owned()
     }
 
     pub fn get_host(&self) -> String {
         let uri = self.get_uri();
-        debug!("get host: {}", uri);
+        trace!("get host: {}", uri);
         uri.host().unwrap().to_string()
     }
 

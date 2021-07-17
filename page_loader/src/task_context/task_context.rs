@@ -11,7 +11,6 @@ use linkresult::uri_service::UriService;
 
 use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::task_context::robots_service::{RobotsService, RobotsTxt};
-use std::fmt;
 use std::fmt::Debug;
 
 pub trait TaskContextInit {
