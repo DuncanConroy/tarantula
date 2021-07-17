@@ -44,6 +44,15 @@ impl Link {
             source_tag: None,
         }
     }
+
+    pub fn from_str_with_scope(s: &str, scope: Option<UriScope>) -> Link {
+        Link {
+            uri: s.trim().to_string(),
+            scope,
+            protocol: None,
+            source_tag: None,
+        }
+    }
 }
 
 unsafe impl Send for Link {}

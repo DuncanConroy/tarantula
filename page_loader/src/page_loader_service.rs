@@ -1,7 +1,8 @@
+use std::{fmt, thread};
 use std::borrow::Borrow;
 use std::cmp::max;
+use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
-use std::{thread, fmt};
 
 use log::debug;
 use tokio::sync::mpsc;
@@ -17,7 +18,6 @@ use crate::page_loader_service::Command::LoadPageCommand;
 use crate::page_response::PageResponse;
 use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
-use std::fmt::{Formatter};
 
 pub trait CommandFactory: Sync + Send {
     fn create_page_crawl_command(&self, url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand>;
@@ -113,87 +113,58 @@ impl PageLoaderService {
 async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<Command>) {
     // updated last_command_received for garbage collection handling
     page_crawl_command.get_task_context().lock().unwrap().set_last_command_received(Instant::now());
-println!("1");
     let url = page_crawl_command.get_url_clone();
     debug!("got url: {:?}", url);
     // legacy
     // tarantula_core::core::init(RunConfig::new(url), response_channel.clone()).await;
 
     // new approach
-    println!("2");
     let http_client = page_crawl_command.get_task_context().lock().unwrap().get_http_client();
-    println!("3");
     let page_response = page_crawl_command.crawl(http_client).await;
-    println!("4");
     if let Ok(page_response_result) = page_response {
-        println!("5");
         if let Some(crawl_result) = page_response_result {
-            println!("6");
             add_links_to_known_list(&page_crawl_command, &crawl_result);
-            println!("7");
             let links = crawl_result.borrow().links.clone();
-            println!("8");
             let task_context = page_crawl_command.get_task_context();
-            println!("9");
             if links.is_some() {
-                println!("10");
                 let mut links_deduped = links.unwrap();
-                println!("11");
                 links_deduped.dedup_by(|a, b| a.uri.eq(&b.uri));
-                println!("12");
                 for link in links_deduped {
-                    println!("13");
                     // todo!("TEST")
                     if link.scope.is_none() { continue; }
-                    println!("14..");
 
                     match link.scope.as_ref().unwrap() {
                         UriScope::Root |
                         UriScope::SameDomain |
                         UriScope::DifferentSubDomain => {
-                            println!("15");
                             let request = page_crawl_command.get_page_request();
-                            println!("16");
                             let protocol = request.lock().unwrap().get_protocol();
-                            println!("17");
                             let host = request.lock().unwrap().get_host();
-                            println!("18");
                             drop(request);
-                            println!("19");
                             let url = task_context.lock().unwrap().get_uri_service().form_full_url(
                                 &protocol,
                                 &String::from(link.uri.clone()),
                                 &host,
                                 &Some(page_crawl_command.get_url_clone()),
                             ).to_string();
-                            println!("20");
 
 
                             let resp = response_channel.clone();
-                            println!("21");
                             let load_page_command = LoadPageCommand { url: url.clone(), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 };
-                            println!("22");
                             tx.send(load_page_command).await.expect(&format!("Issue sending LoadPage command to tx: {:?}", url.clone()));
-                            println!("23");
                         }
                         _ => { continue; }
                     }
                 }
             }
-            println!("24");
             response_channel.send(crawl_result).await.expect("Could not send result to response channel");
-            println!("25");
         } else {
-            println!("26!!!!!!!");
             // todo: send some response to response channel - we got nothing here :)
             // todo!("Proper error handling");
         }
-        println!("xxxx");
     } else {
-        println!("27!!!!!");
         todo!("Proper error handling is required!");
     }
-    println!("END");
 }
 
 fn add_links_to_known_list(page_crawl_command: &Box<dyn CrawlCommand>, crawl_result: &PageResponse) {
@@ -282,16 +253,16 @@ mod tests {
             if !self.url.starts_with("https://example.com/inner") {
                 // if this is the initial crawl, we want to emulate additional links`
                 response.links = Some(vec![
-                    Link::from_str("https://example.com/inner1"),
-                    Link::from_str("https://example.com/inner2"),
-                    Link::from_str("https://example.com/inner3"),
-                    Link::from_str("https://example.com/inner4"),
-                    Link::from_str("https://example.com/inner5"),
-                    Link::from_str("https://example.com/inner6"),
-                    Link::from_str("https://example.com/inner7"),
-                    Link::from_str("https://example.com/inner8"),
-                    Link::from_str("https://example.com/inner9"),
-                    Link::from_str("https://example.com/inner10"),
+                    Link::from_str_with_scope("https://example.com/inner1", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner2", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner3", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner4", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner5", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner6", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner7", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner8", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner9", Some(UriScope::SameDomain)),
+                    Link::from_str_with_scope("https://example.com/inner10", Some(UriScope::SameDomain)),
                 ]);
             }
             Ok(Some(response))
@@ -396,15 +367,17 @@ mod tests {
         assert_eq!(true, send_result.is_ok());
         let mut expected_results = vec![PageResponse::new("https://example.com".into())];
         for i in 1..=10 {
-            expected_results.push(PageResponse::new(format!("https://inner{}", i)));
+            expected_results.push(PageResponse::new(format!("https://example.com/inner{}", i)));
         }
 
-        for i in 1..=11 {
+        let mut actual_results = vec![];
+        for i in 0..expected_results.len() {
             let actual_result = resp_rx.recv().await.unwrap();
             let expected_result = expected_results
-                .drain_filter(|it: &mut PageResponse| it.original_requested_url == actual_result.original_requested_url);
+                .drain_filter(|it: &mut PageResponse| it.original_requested_url.eq(&actual_result.original_requested_url));
             println!("Got {:?}", actual_result);
             assert_eq!(expected_result.count(), 1);
+            actual_results.push(actual_result);
         }
 
         assert_eq!(expected_results.len(), 0);
