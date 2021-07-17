@@ -1,13 +1,13 @@
-use std::ops::{Sub, Deref, Add, AddAssign};
+use std::ops::{AddAssign, Sub};
 use std::sync::{Mutex, Arc};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use hyper::{Body, Client, Response};
+use hyper::{Body, Client, Response, Request};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
 use log::debug;
-use rand::{random, Rng};
+use rand::random;
 
 #[async_trait]
 pub trait HttpClient: Sync + Send {
@@ -33,20 +33,12 @@ impl HttpClientImpl {
         }
     }
 
-    #[cfg(test)]
-    #[allow(unused_variables)] // allowing, as this should only panic
     async fn send_request(&self, method: &str, uri: String) -> Result<Response<Body>, String> {
-        panic!("Don't send requests in test!")
-    }
-
-    #[cfg(not(test))]
-    async fn send_request(&self, method: &str, uri: String) -> Result<Response<Body>, String> {
-        use hyper::Request;
-
         'retry: loop {
             if self.last_request_timestamp.lock().unwrap().elapsed().as_millis() <= self.rate_limiting_ms as u128 {
-                debug!("Rate limiting requests. Limit: {}ms", self.rate_limiting_ms);
-                tokio::time::sleep(Duration::from_millis(self.rate_limiting_ms as u64)).await;
+                let sleep_duration = (random::<f64>() * self.rate_limiting_ms as f64) as u64 + self.rate_limiting_ms as u64;
+                debug!("Rate limiting requests. Random limit: {}ms; Config Setting: {}ms", sleep_duration, self.rate_limiting_ms);
+                tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
             }
             match self.last_request_timestamp.lock() {
                 Ok(mut instant) => {
@@ -54,7 +46,6 @@ impl HttpClientImpl {
                     instant.add_assign(elapsed);
                 }
                 Err(_) => {
-                    tokio::time::sleep(Duration::from_millis(random::<u64>() * self.rate_limiting_ms as u64));
                     continue 'retry;
                 }
             }

@@ -9,7 +9,6 @@ use hyper::header::USER_AGENT;
 use hyper_tls::HttpsConnector;
 use log::{debug, info, warn};
 use robotstxt_with_cache::{DefaultCachingMatcher, DefaultMatcher};
-use tokio::time::Duration;
 
 #[async_trait]
 pub trait RobotsTxtInit {

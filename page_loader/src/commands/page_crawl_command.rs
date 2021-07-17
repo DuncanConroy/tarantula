@@ -143,7 +143,6 @@ impl CrawlCommand for PageCrawlCommand {
 mod tests {
     use std::cmp::Ordering;
     use std::sync::{Arc, Mutex};
-    use std::time::Duration;
 
     use hyper::{Body, Response, StatusCode};
     use hyper::header::CONTENT_TYPE;
@@ -175,7 +174,7 @@ mod tests {
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;
-            fn get_dom_parser(&self) ->Arc<DomParser>;
+            fn get_dom_parser(&self) ->Arc<dyn DomParser>;
             fn get_http_client(&self) -> Arc<dyn HttpClient>;
         }
         impl KnownLinks for MyTaskContext{

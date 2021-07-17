@@ -49,6 +49,7 @@ pub struct PageDownloadResponse {
     pub response_timings: ResponseTimings,
 }
 
+#[cfg(test)]
 impl PageDownloadResponse {
     pub fn new(requested_url: String, http_response_code: StatusCode) -> PageDownloadResponse {
         PageDownloadResponse {
@@ -64,7 +65,6 @@ impl PageDownloadResponse {
 #[cfg(test)]
 mod tests {
     use std::sync::{Mutex};
-    use std::time::Duration;
 
     use hyper::{Body, Response};
     use mockall::*;
@@ -91,7 +91,7 @@ mod tests {
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;
-            fn get_dom_parser(&self) ->Arc<DomParser>;
+            fn get_dom_parser(&self) ->Arc<dyn DomParser>;
             fn get_http_client(&self) -> Arc<dyn HttpClient>;
         }
         impl KnownLinks for MyTaskContext{

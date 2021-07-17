@@ -134,8 +134,6 @@ impl FetchHeaderResponse {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use mockall::*;
     use mockall::predicate::eq;
     use tokio::time::Instant;
@@ -162,7 +160,7 @@ mod tests {
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;
-            fn get_dom_parser(&self) ->Arc<DomParser>;
+            fn get_dom_parser(&self) ->Arc<dyn DomParser>;
             fn get_http_client(&self) -> Arc<dyn HttpClient>;
         }
         impl KnownLinks for MyTaskContext{
@@ -181,10 +179,6 @@ mod tests {
             async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
             async fn get(&self, uri: String) -> std::result::Result<Response<Body>, String>;
         }
-    }
-
-    fn get_mock_http_client() -> Arc<MockMyHttpClient> {
-        Arc::new(MockMyHttpClient::new())
     }
 
     #[tokio::test]

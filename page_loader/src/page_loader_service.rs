@@ -197,10 +197,12 @@ pub enum Command {
 impl fmt::Debug for Command {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &*self {
+            #[allow(unused_variables)] // allowing, as this is the signature
             Command::LoadPageCommand{url, response_channel, task_context, current_depth} => f.debug_struct("LoadPageCommand")
                 .field("url", &url)
                 .field("current_depth", &current_depth)
                 .finish(),
+            #[allow(unused_variables)] // allowing, as this is the signature
             Command::CrawlDomainCommand{url, response_channel, last_crawled_timestamp} => f.debug_struct("CrawlDomainCommand")
                 .field("url", &url)
                 .field("last_crawled_timestamp", &last_crawled_timestamp)
@@ -303,7 +305,7 @@ mod tests {
         // given
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
-        let (resp_tx, mut resp_rx) = mpsc::channel(2);
+        let (resp_tx, mut resp_rx) = mpsc::channel(1);
 
         // when
         let send_result = tx.send(CrawlDomainCommand { url: String::from("https://example.com"), response_channel: resp_tx.clone(), last_crawled_timestamp: 0 }).await;
@@ -371,7 +373,7 @@ mod tests {
         }
 
         let mut actual_results = vec![];
-        for i in 0..expected_results.len() {
+        for _ in 0..expected_results.len() {
             let actual_result = resp_rx.recv().await.unwrap();
             let expected_result = expected_results
                 .drain_filter(|it: &mut PageResponse| it.original_requested_url.eq(&actual_result.original_requested_url));
