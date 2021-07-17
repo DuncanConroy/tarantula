@@ -228,6 +228,7 @@ mod tests {
             ignore_robots_txt: false,
             keep_html_in_memory: false,
             user_agent: "".to_string(),
+            crawl_delay_ms: 1,
         }))
     }
 
