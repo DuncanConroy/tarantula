@@ -19,10 +19,9 @@ impl UriService {
     pub fn form_full_url(&self, protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
         trace!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
         let to_uri = |input: &str| {
-            if let Ok(parsed_uri) = String::from(input).parse::<hyper::Uri>() {
-                parsed_uri
-            } else {
-                panic!("Problem with uri {}", uri)
+            match String::from(input).parse::<hyper::Uri>() {
+                Ok(parsed_uri) => parsed_uri,
+                Err(_)=> try_autofix_invalid_url(input)
             }
         };
         let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
@@ -97,6 +96,19 @@ fn normalize_url(uri: String, parent_uri: &Option<String>) -> String {
     parts_out.join("/")
 }
 
+fn try_autofix_invalid_url(uri:&str) -> Uri {
+    let  autofixed_uri = urlencoding::encode(uri).into_owned()
+        .replace("%3A", ":")
+        .replace("%2F","/");
+
+    match autofixed_uri.parse::<hyper::Uri>() {
+        Ok(parse_uri) => parse_uri,
+            Err(error_message)=> {
+                panic!("Problem with uri {}. Autofixing failed with {}: {}", uri, autofixed_uri, error_message)
+            }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::ops::Add;
@@ -121,6 +133,7 @@ mod tests {
             ("https://twitter.com/example-com", "https://twitter.com/example-com"),
             ("mailto:support@example.com", "mailto:support@example.com"),
             ("//storage.googleapis.com/example.com/assets/foo.png", "https://storage.googleapis.com/example.com/assets/foo.png"),
+            ("/some invalid url/assets/my picture.png", "https://example.com/some%20invalid%20url/assets/my%20picture.png"),
         ];
 
         let host = "example.com";

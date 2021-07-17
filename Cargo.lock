@@ -1358,6 +1358,7 @@ dependencies = [
  "rand 0.8.3",
  "regex",
  "scraper",
+ "urlencoding",
 ]
 
 [[package]]
@@ -3347,6 +3348,12 @@ dependencies = [
  "matches",
  "percent-encoding 2.1.0",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d95bbc99edfcbbd61cc6e43dab325bbff0aa481fec3996051ada8409d506d528"
 
 [[package]]
 name = "utf-8"
