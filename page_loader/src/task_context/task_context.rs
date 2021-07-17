@@ -57,11 +57,13 @@ impl TaskContextInit for DefaultTaskContext {
     fn init(uri: String) -> DefaultTaskContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let task_config = Arc::new(Mutex::new(TaskConfig::new(uri)));
+        let user_agent = task_config.lock().unwrap().user_agent.clone();
+        let crawl_delay_ms = task_config.lock().unwrap().crawl_delay_ms.clone();
         let link_type_checker = Arc::new(LinkTypeChecker::new(hyper_uri.host().unwrap()));
         let dom_parser = Arc::new(DomParserService::new(link_type_checker.clone()));
         let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
-        let robots_service = Arc::new(RobotsService::new(task_config.lock().unwrap().user_agent.clone()));
-        let http_client = Arc::new(HttpClientImpl::new(task_config.lock().unwrap().user_agent.clone()));
+        let robots_service = Arc::new(RobotsService::new(user_agent.clone()));
+        let http_client = Arc::new(HttpClientImpl::new(user_agent.clone(), crawl_delay_ms.clone()));
         let uuid = Uuid::new_v4();
         let all_known_links = Arc::new(Mutex::new(vec![]));
         let last_command_received = Instant::now();
@@ -127,10 +129,6 @@ impl RobotsTxt for DefaultTaskContext {
     fn can_access(&self, item_uri: &str) -> bool {
         self.robots_service.clone().can_access(item_uri)
     }
-
-    fn get_crawl_delay(&self) -> Option<Duration> {
-        todo!()
-    }
 }
 
 impl FullTaskContext for DefaultTaskContext {}
@@ -144,6 +142,7 @@ pub struct TaskConfig {
     pub ignore_robots_txt: bool,
     pub keep_html_in_memory: bool,
     pub user_agent: String,
+    pub crawl_delay_ms: usize
 }
 
 impl TaskConfig {
@@ -156,6 +155,7 @@ impl TaskConfig {
             ignore_robots_txt: false,
             keep_html_in_memory: false,
             user_agent: String::from("tarantula"),
+            crawl_delay_ms: 1_000
         }
     }
 }

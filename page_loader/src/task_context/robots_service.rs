@@ -18,7 +18,6 @@ pub trait RobotsTxtInit {
 
 pub trait RobotsTxt: Sync + Send {
     fn can_access(&self, item_uri: &str) -> bool;
-    fn get_crawl_delay(&self) -> Option<Duration>;
 }
 
 pub struct RobotsService {
@@ -50,10 +49,6 @@ impl RobotsTxt for RobotsService {
         !self.disallow_all.load(Ordering::Acquire) &&
             (self.allow_all.load(Ordering::Acquire)
                 || self.robot_file_parser.clone().lock().unwrap().one_agent_allowed_by_robots(&self.user_agent, item_uri))
-    }
-
-    fn get_crawl_delay(&self) -> Option<Duration> {
-        todo!()
     }
 }
 
