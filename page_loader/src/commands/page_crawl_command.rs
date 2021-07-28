@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::header::CONTENT_TYPE;
+use hyper::StatusCode;
 use log::debug;
 
-use linkresult::{Link};
+use linkresult::Link;
 
 use crate::commands::fetch_header_command::FetchHeaderCommand;
 use crate::commands::page_download_command::PageDownloadCommand;
@@ -76,27 +78,42 @@ impl PageCrawlCommand {
         if let Ok(result) = fetch_header_response {
             let http_client = result.1;
             let fetch_header_response = result.0;
-            page_response.status_code = Some(fetch_header_response.http_response_code.as_u16().clone());
+            page_response.status_code = Some(fetch_header_response.http_response_code.clone());
             page_response.headers = Some(fetch_header_response);
             let final_uri = page_response.headers.as_ref().unwrap().get_final_uri();
             page_response.final_url_after_redirects = Some(final_uri.clone());
 
             let headers = &page_response.headers.as_ref().unwrap().headers;
-            if headers.contains_key(CONTENT_TYPE.as_str()) && headers.get(CONTENT_TYPE.as_str()).unwrap().contains("text/html") {
+            if self.should_download_page(headers, &page_response.status_code) {
                 let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client).await;
-                if page_download_response.is_ok() {
-                    page_response.body = page_download_response.unwrap().body;
-                    page_response.links = self.extract_links(page_response.body.as_ref());
+                if let Ok(download_result) = page_download_response {
+                    if self.is_html(&download_result.headers) {
+                        page_response.body = download_result.body;
+                        page_response.links = self.extract_links(page_response.body.as_ref());
+                    }
                 } else {
                     panic!("proper error handling needed")
                 }
             }
 
-            // todo!("TDD approach to retrieve head(✅), redirect(✅), final content(✅), parse and return found links");
             // todo work with dynamic filtering and mapping classes, like spring routing, etc.
         }
         page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
         Ok(Some(page_response))
+    }
+
+    fn should_download_page(&self, headers: &HashMap<String, String>, status_code: &Option<StatusCode>) -> bool {
+        if let Some(code) = status_code {
+            return (code.is_success() || headers.contains_key("x-cache") && headers.get("x-cache").unwrap().contains("cloudfront")) &&
+                self.is_html(headers);
+        }
+
+        false
+    }
+
+    fn is_html(&self, headers: &HashMap<String, String>) -> bool {
+        headers.contains_key(CONTENT_TYPE.as_str()) &&
+            headers.get(CONTENT_TYPE.as_str()).unwrap().contains("text/html")
     }
 
     fn extract_links(&self, body: Option<&String>) -> Option<Vec<Link>> {
@@ -110,9 +127,9 @@ impl PageCrawlCommand {
                 body_content);
 
             return match links {
-                None => {None}
+                None => { None }
                 Some(links) => Some(links.links)
-            }
+            };
         }
         return None;
     }
@@ -151,8 +168,8 @@ mod tests {
     use uuid::Uuid;
 
     use dom_parser::DomParser;
-    use linkresult::uri_service::{UriService};
-    use linkresult::{UriResult};
+    use linkresult::uri_service::UriService;
+    use linkresult::UriResult;
 
     use crate::commands::fetch_header_command::{FetchHeaderResponse, Redirect};
     use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
@@ -458,7 +475,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn does_not_dowload_page_if_content_type_is_not_text_html() {
+    async fn does_not_download_page_if_content_type_is_not_text_html() {
         // given: a task context that allows crawl
         let url = String::from("https://example.com");
         let mut mock_task_context = MockMyTaskContext::new();
@@ -493,7 +510,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dowloads_page_if_content_type_is_text_html() {
+    async fn downloads_page_if_content_type_is_text_html() {
         // given: a task context that allows crawl
         let url = String::from("https://example.com");
 
@@ -505,9 +522,9 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
-        mock_task_context.expect_get_dom_parser().returning(||{
+        mock_task_context.expect_get_dom_parser().returning(|| {
             let mut dom_parser = MockMyDomParser::new();
-            dom_parser.expect_get_links().returning(|_,_,_|None);
+            dom_parser.expect_get_links().returning(|_, _, _| None);
             Arc::new(dom_parser)
         });
 
@@ -531,6 +548,8 @@ mod tests {
             .returning(|uri, _| {
                 if uri == "https://final-redirection.example.com" {
                     let mut download_response = PageDownloadResponse::new(uri.clone(), StatusCode::OK);
+                    download_response.headers = HashMap::new();
+                    download_response.headers.insert("content-type".into(), "text/html".into());
                     download_response.body = Some("<html><p>Hello World!</p></html>".into());
                     return Ok(download_response);
                 }
@@ -549,8 +568,8 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client).await;
 
         // then: expect some PageResponse with body
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_some(), true, "Should have body, if status content-type is not text/html");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.as_ref().unwrap(), &String::from("<html><p>Hello World!</p></html>"), "Should have body, if status content-type is not text/html");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_some(), true, "Should have body, if status content-type is text/html");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.as_ref().unwrap(), &String::from("<html><p>Hello World!</p></html>"), "Should have body, if status content-type is text/html");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().final_url_after_redirects.is_some(), true, "Should have final_url_after_redirects updated");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().final_url_after_redirects.as_ref().unwrap(), "https://final-redirection.example.com", "Should have final_url_after_redirects set to requested url");
