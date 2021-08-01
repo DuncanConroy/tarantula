@@ -8,7 +8,6 @@ edition = "2018"
 
 [dependencies]
 # internal
-tarantula_core = { path = "../core" }
 dom_parser = { path = "../dom_parser" }
 linkresult = { path = "../linkresult" }
 # external

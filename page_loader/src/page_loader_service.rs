@@ -115,10 +115,7 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
     page_crawl_command.get_task_context().lock().unwrap().set_last_command_received(Instant::now());
     let url = page_crawl_command.get_url_clone();
     debug!("got url: {:?}", url);
-    // legacy
-    // tarantula_core::core::init(RunConfig::new(url), response_channel.clone()).await;
 
-    // new approach
     let http_client = page_crawl_command.get_task_context().lock().unwrap().get_http_client();
     let page_response = page_crawl_command.crawl(http_client).await;
     if let Ok(page_response_result) = page_response {

@@ -7,7 +7,34 @@ use tokio::sync::mpsc;
 
 use page_loader::page_loader_service::Command::CrawlDomainCommand;
 use page_loader::page_loader_service::PageLoaderService;
-use tarantula_core::core::{DynResult, RunConfig};
+
+// A simple type alias so as to DRY.
+pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+#[derive(Clone, Debug)]
+pub struct RunConfig {
+    pub url: String,
+    pub ignore_redirects: bool,
+    pub maximum_redirects: u8,
+    pub maximum_depth: u8,
+    pub ignore_robots_txt: bool,
+    pub keep_html_in_memory: bool,
+    pub user_agent: String,
+}
+
+impl RunConfig {
+    pub fn new(url: String) -> RunConfig {
+        RunConfig {
+            url,
+            ignore_redirects: false,
+            maximum_redirects: 10,
+            maximum_depth: 16,
+            ignore_robots_txt: false,
+            keep_html_in_memory: false,
+            user_agent: String::from("tarantula"),
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> DynResult<()> {
