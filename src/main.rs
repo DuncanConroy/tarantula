@@ -39,7 +39,6 @@ impl RunConfig {
 #[tokio::main]
 async fn main() -> DynResult<()> {
     log4rs::init_file("config/log4rs.yaml", Default::default()).unwrap();
-    // pretty_env_logger::init();
     info!("Starting tarantula");
 
     // TODO: webserver endpoint
