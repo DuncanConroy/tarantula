@@ -105,7 +105,7 @@ impl RobotsTxtInit for RobotsService {
                 _ => {}
             }
 
-            self.is_initialized.store(true, Ordering::Acquire);
+            self.is_initialized.store(true, Ordering::SeqCst);
         }.await
     }
 }
