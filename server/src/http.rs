@@ -32,11 +32,6 @@ pub fn crawl(run_config: Json<RunConfig>) -> &'static str {
     "OK"
 }
 
-#[get("/crawl")]
-pub fn crawl_get() -> &'static str {
-    "Det er feil!"
-}
-
 #[catch(404)]
 fn not_found() -> Value {
     json!({
