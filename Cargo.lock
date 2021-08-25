@@ -2505,6 +2505,10 @@ dependencies = [
 name = "server"
 version = "0.1.0"
 dependencies = [
+ "hyper",
+ "hyper-tls",
+ "num_cpus",
+ "page_loader",
  "rocket",
  "serde",
 ]

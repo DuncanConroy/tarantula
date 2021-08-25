@@ -1,4 +1,11 @@
+use hyper::{Body, Client, Request};
+use hyper_tls::HttpsConnector;
 use rocket::serde::{Deserialize, json::{Json, json, Value}};
+use rocket::tokio;
+use rocket::tokio::sync::mpsc;
+
+use page_loader::page_loader_service::Command::CrawlDomainCommand;
+use page_loader::page_loader_service::PageLoaderService;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct RunConfig {
@@ -29,6 +36,7 @@ impl RunConfig {
 
 #[put("/crawl", data = "<run_config>")]
 pub fn crawl(run_config: Json<RunConfig>) -> &'static str {
+    tokio::spawn(process(run_config.0));
     "OK"
 }
 
@@ -38,6 +46,40 @@ fn not_found() -> Value {
         "status": "error",
         "reason": "You're an idiot!"
     })
+}
+
+async fn process(run_config:RunConfig) {
+    let num_cpus = num_cpus::get();
+    let tx = PageLoaderService::init();
+    let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
+
+    let send_result = tx.send(CrawlDomainCommand { url: run_config.url.clone(), last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
+    let connector = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(connector);
+
+    let manager = tokio::spawn(async move {
+        let mut responses = 0;
+        while let Some(page_response) = resp_rx.recv().await {
+            let page_response_json = rocket::serde::json::serde_json::to_string(&page_response).unwrap();
+            info!("Received from threads: {:?}", page_response_json.clone());
+            responses = responses + 1;
+            info!(". -> {}", responses);
+
+            if let Some(callback_url) = run_config.callback_url.clone() {
+                let req = Request::builder()
+                    .header("user-agent", run_config.user_agent.clone())
+                    .method("POST")
+                    .uri(callback_url)
+                    .body(Body::from(page_response_json))
+                    .expect(&format!("POST request builder"));
+                client.request(req);
+            }
+        }
+    });
+
+    manager.await.unwrap();
+
+    info!("Finished.");
 }
 
 // use rocket_contrib::json::{Json, JsonError};
