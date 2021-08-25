@@ -4,9 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use hyper::{Body, Response, StatusCode, Uri};
+use hyper::{Body, Response, Uri};
 use hyper::header::HeaderValue;
 use log::{debug, info, trace};
+use serde::{Serialize, Serializer};
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
@@ -50,7 +51,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let redirects_result = redirects.unwrap_or(vec![]);
         let result = FetchHeaderResponse {
             redirects: redirects_result,
-            http_response_code: response.status(),
+            http_response_code: StatusCode { code: response.status().as_u16(), label: response.status().canonical_reason().unwrap().into() },
             headers,
             requested_url: uri.clone(),
             response_timings: ResponseTimings::from(format!("FetchHeaderResponse.{}", uri.clone()), start_time, DateTime::from(Utc::now())),
@@ -67,7 +68,7 @@ impl DefaultFetchHeaderCommand {
         let redirect = Redirect {
             source: uri.clone(),
             destination: adjusted_uri.to_string(),
-            http_response_code: response.status(),
+            http_response_code: StatusCode { code: response.status().as_u16(), label: response.status().canonical_reason().unwrap().into() },
             headers: headers.clone(),
             response_timings: ResponseTimings::from(format!("Redirect.{}", uri.clone()), redirect_start_time, DateTime::from(Utc::now())),
         };
@@ -81,7 +82,19 @@ impl DefaultFetchHeaderCommand {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+pub struct StatusCode {
+    pub(crate) code: u16,
+    pub(crate) label: String,
+}
+
+impl StatusCode {
+    pub fn is_success(&self) -> bool {
+        hyper::StatusCode::from_u16(self.code).unwrap().is_success()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Redirect {
     source: String,
     destination: String,
@@ -96,14 +109,14 @@ impl Redirect {
         Redirect {
             source: source.clone(),
             destination,
-            http_response_code: StatusCode::OK,
+            http_response_code: StatusCode { code: 200, label: "OK".into() },
             headers: HashMap::new(),
             response_timings: ResponseTimings::new(format!("Redirects.{}", source)),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FetchHeaderResponse {
     pub requested_url: String,
     pub redirects: Vec<Redirect>,

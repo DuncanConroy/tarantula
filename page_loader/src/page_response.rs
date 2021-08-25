@@ -1,11 +1,11 @@
-use hyper::StatusCode;
+use serde::Serialize;
 
 use linkresult::Link;
 
-use crate::commands::fetch_header_command::FetchHeaderResponse;
+use crate::commands::fetch_header_command::{FetchHeaderResponse, StatusCode};
 use crate::response_timings::ResponseTimings;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PageResponse {
     pub original_requested_url: String,
     pub final_url_after_redirects: Option<String>,

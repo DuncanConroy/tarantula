@@ -20,9 +20,11 @@ pub async fn rocket() -> _ {
 }
 
 // #[tokio::main]
+// // #[rocket::main]
 // async fn main() -> DynResult<()> {
 //     log4rs::init_file("config/log4rs.yaml", Default::default()).unwrap();
 //     info!("Starting tarantula");
+//     // rocket::build().mount("/", routes![crawl, crawl_get]).launch();
 //
 //     // TODO: webserver endpoint
 //     process().await;
@@ -34,7 +36,7 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
     let matches = App::from_yaml(yaml).get_matches();
 
     let url = matches.value_of("URL").unwrap();
-    let mut run_config = RunConfig::new(url.to_string());
+    let mut run_config = RunConfig::new(url.to_string(), None);
 
     run_config.ignore_redirects = matches.is_present("ignore_redirects");
     run_config.ignore_robots_txt = matches.is_present("ignore_robots_txt");
@@ -55,10 +57,12 @@ fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
 }
 
 async fn process() {
-    let run_config = parse_runconfig_from_args().unwrap();
     let num_cpus = num_cpus::get();
     let tx = PageLoaderService::init();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
+
+    // only used for local command line - todo: refactor out of here
+    let run_config = parse_runconfig_from_args().unwrap();
     let send_result = tx.send(CrawlDomainCommand { url: run_config.url, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
 
     let manager = tokio::spawn(async move {

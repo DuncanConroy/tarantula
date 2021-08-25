@@ -4,12 +4,11 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::header::CONTENT_TYPE;
-use hyper::StatusCode;
 use log::debug;
 
 use linkresult::Link;
 
-use crate::commands::fetch_header_command::FetchHeaderCommand;
+use crate::commands::fetch_header_command::{FetchHeaderCommand, StatusCode};
 use crate::commands::page_download_command::PageDownloadCommand;
 use crate::http::http_client::HttpClient;
 use crate::page_request::PageRequest;
@@ -172,6 +171,7 @@ mod tests {
     use linkresult::UriResult;
 
     use crate::commands::fetch_header_command::{FetchHeaderResponse, Redirect};
+    use crate::commands::fetch_header_command;
     use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
     use crate::commands::page_download_command::PageDownloadResponse;
     use crate::task_context::robots_service::RobotsTxt;
@@ -292,7 +292,7 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), fetch_header_command::StatusCode{code:hyper::StatusCode::IM_A_TEAPOT.as_u16(),label:hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into()}), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
@@ -352,7 +352,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), fetch_header_command::StatusCode{code:hyper::StatusCode::IM_A_TEAPOT.as_u16(),label:hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into()}), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
@@ -414,7 +414,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::IM_A_TEAPOT), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), fetch_header_command::StatusCode{code:hyper::StatusCode::IM_A_TEAPOT.as_u16(),label:hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into()}), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
         // when: invoked with a regular link
@@ -430,7 +430,7 @@ mod tests {
 
         // then: expect some PageResponse with Teapot status code
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.unwrap(), StatusCode::IM_A_TEAPOT);
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.as_ref().unwrap().code, StatusCode::IM_A_TEAPOT.as_u16());
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
     }
@@ -446,7 +446,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::INTERNAL_SERVER_ERROR), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((FetchHeaderResponse::new(String::from("https://example.com"), fetch_header_command::StatusCode{code:hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16(),label:hyper::StatusCode::INTERNAL_SERVER_ERROR.canonical_reason().unwrap().into()}), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
         // when: invoked with a regular link
@@ -462,7 +462,7 @@ mod tests {
 
         // then: expect some PageResponse with InternalServerError status code and no body
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.unwrap(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.as_ref().unwrap().code, StatusCode::INTERNAL_SERVER_ERROR.as_u16());
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_none(), true, "Should not have body, if status is not ok");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
@@ -486,7 +486,7 @@ mod tests {
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| {
-            let mut header_response = FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::OK);
+            let mut header_response = FetchHeaderResponse::new(String::from("https://example.com"), fetch_header_command::StatusCode{code:hyper::StatusCode::OK.as_u16(),label:hyper::StatusCode::OK.canonical_reason().unwrap().into()});
             header_response.headers.insert(CONTENT_TYPE.as_str().into(), "application/json; charset=UTF-8".into());
 
             Ok((header_response, get_mock_http_client()))
@@ -530,7 +530,7 @@ mod tests {
 
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| {
-            let mut header_response = FetchHeaderResponse::new(String::from("https://example.com"), StatusCode::OK);
+            let mut header_response = FetchHeaderResponse::new(String::from("https://example.com"), fetch_header_command::StatusCode{code:hyper::StatusCode::OK.as_u16(),label:hyper::StatusCode::OK.canonical_reason().unwrap().into()});
             header_response.headers.insert(CONTENT_TYPE.as_str().into(), "text/html; charset=UTF-8".into());
             header_response.redirects.push(Redirect::from(
                 String::from("https://example.com"),
