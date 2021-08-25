@@ -9,14 +9,14 @@ use tokio::sync::mpsc;
 
 use page_loader::page_loader_service::Command::CrawlDomainCommand;
 use page_loader::page_loader_service::PageLoaderService;
-use server::http::{crawl, crawl_get, RunConfig};
+use server::http::{crawl, RunConfig};
 
 // A simple type alias so as to DRY.
 pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[launch]
 pub async fn rocket() -> _ {
-    rocket::build().mount("/", routes![crawl, crawl_get])
+    rocket::build().mount("/", routes![crawl])
 }
 
 // #[tokio::main]
