@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub struct ResponseTimings {
@@ -27,7 +28,7 @@ impl ResponseTimings {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Link {
     pub uri: String,
     pub scope: Option<UriScope>,
@@ -69,7 +70,7 @@ impl PartialEq for Link {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub enum UriProtocol {
     // http://example.com/bar
     HTTP,
@@ -79,7 +80,7 @@ pub enum UriProtocol {
     IMPLICIT,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub enum UriScope {
     // /
     Root,
