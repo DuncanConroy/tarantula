@@ -72,7 +72,7 @@ async fn process(run_config:RunConfig) {
                     .uri(callback_url)
                     .body(Body::from(page_response_json))
                     .expect(&format!("POST request builder"));
-                client.request(req);
+                client.request(req).await;
             }
         }
     });
