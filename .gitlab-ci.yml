@@ -32,8 +32,6 @@ build_latest:
   artifacts:
     paths:
       - tarantula
-  only:
-    - main
 
 cache:
   paths:
