@@ -32,9 +32,9 @@ pub struct PageCrawlCommand {
 }
 
 impl PageCrawlCommand {
-    pub fn new(url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16, fetch_header_command: Box<dyn FetchHeaderCommand>, page_download_command: Box<dyn PageDownloadCommand>) -> PageCrawlCommand {
+    pub fn new(url: String, raw_url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16, fetch_header_command: Box<dyn FetchHeaderCommand>, page_download_command: Box<dyn PageDownloadCommand>) -> PageCrawlCommand {
         PageCrawlCommand {
-            request_object: Arc::new(Mutex::new(PageRequest::new(url, None, task_context))),
+            request_object: Arc::new(Mutex::new(PageRequest::new(url,raw_url, None, task_context))),
             current_depth,
             fetch_header_command,
             page_download_command,
@@ -72,7 +72,9 @@ impl PageCrawlCommand {
 
     async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
         let request_object_cloned = self.request_object.clone();
-        let mut page_response = PageResponse::new(request_object_cloned.lock().unwrap().url.clone());
+        let url = request_object_cloned.lock().unwrap().url.clone();
+        let raw_url = request_object_cloned.lock().unwrap().raw_url.clone();
+        let mut page_response = PageResponse::new(url, raw_url);
         let fetch_header_response = self.fetch_header_command.fetch_header(request_object_cloned, http_client, None).await;
         if let Ok(result) = fetch_header_response {
             let http_client = result.1;
@@ -268,6 +270,7 @@ mod tests {
         // when: invoked with a current_depth > 0 && > maximum_depth
         let page_crawl_command = PageCrawlCommand::new(
             String::from("https://example.com"),
+            String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             2,
             mock_fetch_header_command,
@@ -304,6 +307,7 @@ mod tests {
         // when: invoked with a current_depth > 0
         let page_crawl_command = PageCrawlCommand::new(
             String::from("https://example.com"),
+            String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             9000,
             mock_fetch_header_command,
@@ -329,6 +333,7 @@ mod tests {
 
         // when: invoked with a known link
         let page_crawl_command = PageCrawlCommand::new(
+            url.clone(),
             url.clone(),
             Arc::new(Mutex::new(mock_task_context)),
             1,
@@ -364,6 +369,7 @@ mod tests {
         // when: invoked with a known link
         let page_crawl_command = PageCrawlCommand::new(
             String::from("https://example.com"),
+            String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             1,
             mock_fetch_header_command,
@@ -390,6 +396,7 @@ mod tests {
 
         // when: invoked with a restricted link
         let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
             String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             1,
@@ -419,6 +426,7 @@ mod tests {
 
         // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
             String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             1,
@@ -451,6 +459,7 @@ mod tests {
 
         // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
             String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             1,
@@ -495,6 +504,7 @@ mod tests {
 
         // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
             String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             1,
@@ -558,6 +568,7 @@ mod tests {
 
         // when: invoked with a regular link
         let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
             String::from("https://example.com"),
             Arc::new(Mutex::new(mock_task_context)),
             1,

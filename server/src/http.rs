@@ -40,14 +40,6 @@ pub fn crawl(run_config: Json<RunConfig>) -> &'static str {
     "OK"
 }
 
-#[catch(404)]
-fn not_found() -> Value {
-    json!({
-        "status": "error",
-        "reason": "You're an idiot!"
-    })
-}
-
 async fn process(run_config:RunConfig) {
     let num_cpus = num_cpus::get();
     let tx = PageLoaderService::init();
