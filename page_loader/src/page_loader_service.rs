@@ -20,7 +20,7 @@ use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, Tas
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
 
 pub trait CommandFactory: Sync + Send {
-    fn create_page_crawl_command(&self, url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand>;
+    fn create_page_crawl_command(&self, url: String, raw_url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand>;
 }
 
 pub struct PageCrawlCommandFactory;
@@ -32,8 +32,9 @@ impl PageCrawlCommandFactory {
 }
 
 impl CommandFactory for PageCrawlCommandFactory {
-    fn create_page_crawl_command(&self, url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
+    fn create_page_crawl_command(&self, url: String, raw_url:String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
         Box::new(PageCrawlCommand::new(url,
+                                       raw_url,
                                        task_context,
                                        current_depth,
                                        Box::new(DefaultFetchHeaderCommand {}),
@@ -44,19 +45,6 @@ impl CommandFactory for PageCrawlCommandFactory {
 pub struct PageLoaderService {
     mpsc_sender: Option<Sender<Command>>,
     task_manager: Box<Arc<Mutex<dyn TaskManager>>>,
-    // all_known_links/AppContext/TaskContext
-    // services
-
-    // angenommen wir packen hier eine hashmap hin mit domain -> known_links. wann koennen wir diese map wieder aufraeumen?
-    // ggf. timestamp des letzten LoadPage commands mitspeichern irgendwo und wenn diff zu jetzt > 1-10 min, speicher freigeben.
-    // das koennen wir wunderbar im taskcontext speichern und den dann irgendwann auslaufen lassen
-
-
-    // CrawlDomainCommand -> legt task context in hashmap an
-    // neuer garbage collection thread schaut regelmaessig, wann das letzte LoadPageCommand fuer den entpsrechenden task (uuid) angenommen wurde
-    // und nach gewisser zeit (durchschnittscrawlzeit * 2) wird der taskcontext geschlossen
-
-    // zwei response types (enum) im channel - 1. initial mit uuid, um mittels webserver zu returnen. 2. page_response zum senden an pubsub
 }
 
 impl PageLoaderService {
@@ -86,12 +74,12 @@ impl PageLoaderService {
         let _manager = tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 match event {
-                    Command::LoadPageCommand { url, response_channel, task_context, current_depth } => {
-                        debug!("received LoadPage command with url: {} on thread {:?}, depth: {}", url, thread::current().name(), current_depth);
+                    Command::LoadPageCommand { url, raw_url, response_channel, task_context, current_depth } => {
+                        debug!("received LoadPage command with url: {} (raw_url: {}) on thread {:?}, depth: {}", url, raw_url, thread::current().name(), current_depth);
                         let tx_task = tx_clone.clone();
                         let local_command_factory = arc_command_factory.clone();
                         tokio::spawn(async move {
-                            let page_crawl_command = local_command_factory.create_page_crawl_command(url, task_context, current_depth);
+                            let page_crawl_command = local_command_factory.create_page_crawl_command(url, raw_url, task_context, current_depth);
                             do_load(response_channel, page_crawl_command, tx_task).await
                         });// Don't await here. Otherwise all processes might hang indefinitely
                     }
@@ -99,7 +87,7 @@ impl PageLoaderService {
                         debug!("received CrawlDomainCommand with url: {} on thread {:?}", url, thread::current().name());
                         let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(url.clone())));
                         arc_page_loader_service_clone.task_manager.lock().unwrap().add_task(task_context.clone());
-                        tx_clone.send(LoadPageCommand { url, response_channel, task_context: task_context.clone(), current_depth: 0 }).await.expect("Problem with spawned worker thread for CrawlDomainCommand");
+                        tx_clone.send(LoadPageCommand { url: url.clone(), raw_url:url, response_channel, task_context: task_context.clone(), current_depth: 0 }).await.expect("Problem with spawned worker thread for CrawlDomainCommand");
                     }
                 }
             }
@@ -147,7 +135,7 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
 
 
                             let resp = response_channel.clone();
-                            let load_page_command = LoadPageCommand { url: url.clone(), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 };
+                            let load_page_command = LoadPageCommand { url: url.clone(), raw_url: link.uri.clone() , response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 };
                             tx.send(load_page_command).await.expect(&format!("Issue sending LoadPage command to tx: {:?}", url.clone()));
                         }
                         _ => { continue; }
@@ -180,6 +168,7 @@ fn add_links_to_known_list(page_crawl_command: &Box<dyn CrawlCommand>, crawl_res
 pub enum Command {
     LoadPageCommand {
         url: String,
+        raw_url: String,
         response_channel: mpsc::Sender<PageResponse>,
         task_context: Arc<Mutex<dyn FullTaskContext>>,
         current_depth: u16,
@@ -195,8 +184,9 @@ impl fmt::Debug for Command {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &*self {
             #[allow(unused_variables)] // allowing, as this is the signature
-            Command::LoadPageCommand{url, response_channel, task_context, current_depth} => f.debug_struct("LoadPageCommand")
+            Command::LoadPageCommand{url, raw_url, response_channel, task_context, current_depth} => f.debug_struct("LoadPageCommand")
                 .field("url", &url)
+                .field("raw_url", &raw_url)
                 .field("current_depth", &current_depth)
                 .finish(),
             #[allow(unused_variables)] // allowing, as this is the signature
@@ -231,7 +221,7 @@ mod tests {
     impl StubPageCrawlCommand {
         fn new(url: String) -> StubPageCrawlCommand {
             let task_context = create_default_task_context();
-            let page_request = Arc::new(Mutex::new(PageRequest::new(url.clone(), None, task_context.clone())));
+            let page_request = Arc::new(Mutex::new(PageRequest::new(url.clone(), url.clone(), None, task_context.clone())));
             StubPageCrawlCommand { url, task_context, page_request }
         }
     }
@@ -248,7 +238,7 @@ mod tests {
 
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
         async fn crawl(&self, http_client: Arc<dyn HttpClient>) -> std::result::Result<Option<PageResponse>, String> {
-            let mut response = PageResponse::new(self.url.clone());
+            let mut response = PageResponse::new(self.url.clone(), self.url.clone());
             if !self.url.starts_with("https://example.com/inner") {
                 // if this is the initial crawl, we want to emulate additional links`
                 response.links = Some(vec![
@@ -284,7 +274,7 @@ mod tests {
 
     impl CommandFactory for StubFactory {
         #[allow(unused)] // necessary, because we're stubbing this and not actually using everything that is provided by the trait signature
-        fn create_page_crawl_command(&self, url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
+        fn create_page_crawl_command(&self, url: String, raw_url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
             let mut command = StubPageCrawlCommand::new(url);
             command.task_context = task_context;
             Box::new(command)
@@ -310,7 +300,7 @@ mod tests {
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = PageResponse::new("https://example.com/inner".into());
+        let expected_result = PageResponse::new("https://example.com/inner".into(), "/inner".into());
         let actual_result = resp_rx.recv().await.unwrap();
         assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
     }
@@ -325,11 +315,11 @@ mod tests {
 
         // when
         // NOTE: use "/inner" in the url to trick the StubPageCrawlCommand
-        let send_result = tx.send(LoadPageCommand { url: String::from("https://example.com/inner"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
+        let send_result = tx.send(LoadPageCommand { url: String::from("https://example.com/inner"), raw_url: String::from("/inner"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let expected_result = PageResponse::new("https://example.com/inner".into());
+        let expected_result = PageResponse::new("https://example.com/inner".into(), "inner".into());
         let actual_result = resp_rx.recv().await.unwrap();
         assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
     }
@@ -344,7 +334,7 @@ mod tests {
         let initial_last_command_received_instant = task_context.lock().unwrap().get_last_command_received();
 
         // when
-        let _send_result = tx.send(LoadPageCommand { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
+        let _send_result = tx.send(LoadPageCommand { url: String::from("https://example.com"), raw_url: String::from("/"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
 
         // then
         // need to wait for the channel result first...
@@ -362,13 +352,13 @@ mod tests {
         let task_context = create_default_task_context();
 
         // when
-        let send_result = tx.send(LoadPageCommand { url: String::from("https://example.com"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
+        let send_result = tx.send(LoadPageCommand { url: String::from("https://example.com"), raw_url: String::from("/"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
 
         // then
         assert_eq!(true, send_result.is_ok());
-        let mut expected_results = vec![PageResponse::new("https://example.com".into())];
+        let mut expected_results = vec![PageResponse::new("https://example.com".into(), "/".into())];
         for i in 1..=10 {
-            expected_results.push(PageResponse::new(format!("https://example.com/inner{}", i)));
+            expected_results.push(PageResponse::new(format!("https://example.com/inner{}", i), format!("/inner{}",i)));
         }
 
         let mut actual_results = vec![];

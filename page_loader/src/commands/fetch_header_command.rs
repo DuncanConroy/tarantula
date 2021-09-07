@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use hyper::{Body, Response, Uri};
 use hyper::header::HeaderValue;
 use log::{debug, info, trace};
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
@@ -201,7 +201,7 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         let task_config = TaskConfig::new("https://example.com".into());
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
-        let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
+        let page_request = PageRequest::new("https://example.com".into(), "/".into(), None, Arc::new(Mutex::new(mock_task_context)));
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_| Ok(Response::builder()
             .status(200)
@@ -259,7 +259,7 @@ mod tests {
             .body(Body::from(""))
             .unwrap()));
         let mock_http_client = Arc::new(mock_http_client);
-        let page_request = PageRequest::new("https://example.com".into(), None, Arc::new(Mutex::new(mock_task_context)));
+        let page_request = PageRequest::new("https://example.com".into(), "/".into(), None, Arc::new(Mutex::new(mock_task_context)));
 
         // when: fetch is invoked
         let result = command.fetch_header(Arc::new(Mutex::new(page_request)), mock_http_client, None).await;
