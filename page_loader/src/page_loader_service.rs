@@ -9,13 +9,13 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
-use linkresult::UriScope;
+use responses::page_response::PageResponse;
+use responses::uri_scope::UriScope;
 
 use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::commands::page_download_command::DefaultPageDownloadCommand;
 use crate::page_loader_service::Command::LoadPageCommand;
-use crate::page_response::PageResponse;
 use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
 
@@ -202,12 +202,11 @@ impl fmt::Debug for Command {
 mod tests {
     use async_trait::async_trait;
 
-    use linkresult::Link;
+    use responses::link::Link;
 
     use crate::http::http_client::HttpClient;
     use crate::page_loader_service::Command::{CrawlDomainCommand, LoadPageCommand};
     use crate::page_request::PageRequest;
-    use crate::page_response::PageResponse;
     use crate::task_context::task_context::{DefaultTaskContext, TaskContext, TaskContextInit};
 
     use super::*;

@@ -10,6 +10,7 @@ edition = "2018"
 # internal
 dom_parser = { path = "../dom_parser" }
 linkresult = { path = "../linkresult" }
+responses = { path = "../responses" }
 # external
 async-trait = "0.1.50"
 chrono = "0.4.19"
@@ -21,7 +22,6 @@ log4rs = "1.0.0"
 num_cpus = "1.13.0"
 rand = "0.8.4"
 robotstxt-with-cache = "0.4.0"
-serde = "1.0.128"
 tokio = { version = "^1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
 

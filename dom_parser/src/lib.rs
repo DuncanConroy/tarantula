@@ -4,10 +4,11 @@ use chrono::Utc;
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{Link, LinkTypeChecker, UriResult};
+use linkresult::{LinkTypeChecker, UriResult};
+use responses::link::Link;
 
 pub trait DomParser: Sync + Send {
-    fn get_links(&self, parent_protocol: &str, source_domain:&str, body: &String) -> Option<UriResult>;
+    fn get_links(&self, parent_protocol: &str, source_domain: &str, body: &String) -> Option<UriResult>;
 }
 
 pub struct DomParserService {

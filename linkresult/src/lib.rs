@@ -4,6 +4,8 @@ use std::sync::Arc;
 use fancy_regex::escape;
 use fancy_regex::Regex;
 
+use responses::uri_protocol::UriProtocol;
+use responses::uri_scope::UriScope;
 pub use uri_result::*;
 
 pub mod uri_result;
