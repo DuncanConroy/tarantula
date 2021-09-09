@@ -1,36 +1,37 @@
 use std::collections::HashMap;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use hyper::StatusCode;
 use log::trace;
+
+use responses::get_response::GetResponse;
+use responses::response_timings::ResponseTimings;
+use responses::status_code::StatusCode;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
-use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait PageDownloadCommand: Sync + Send {
-    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<PageDownloadResponse, String>;
+    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<GetResponse, String>;
 }
 
 pub struct DefaultPageDownloadCommand {}
 
 #[async_trait]
 impl PageDownloadCommand for DefaultPageDownloadCommand {
-    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<PageDownloadResponse, String> {
+    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<GetResponse, String> {
         let start_time = DateTime::from(Utc::now());
 
         let response = http_client.get(uri.clone()).await.unwrap();
         trace!("GET for {}: {:?}", uri, response.headers());
         let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
-
-        let status = response.status();
+        let http_response_code = StatusCode { code: response.status().as_u16(), label: response.status().canonical_reason().unwrap().into() };
         let body: String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await.unwrap().as_ref())
             .to_string();
-        let result = PageDownloadResponse {
-            http_response_code: status,
+        let result = GetResponse {
+            http_response_code,
             headers,
             requested_url: uri.clone(),
             response_timings: ResponseTimings::from(uri.clone(), start_time, DateTime::from(Utc::now())),
@@ -40,31 +41,9 @@ impl PageDownloadCommand for DefaultPageDownloadCommand {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PageDownloadResponse {
-    pub requested_url: String,
-    pub body: Option<String>,
-    pub http_response_code: StatusCode,
-    pub headers: HashMap<String, String>,
-    pub response_timings: ResponseTimings,
-}
-
-#[cfg(test)]
-impl PageDownloadResponse {
-    pub fn new(requested_url: String, http_response_code: StatusCode) -> PageDownloadResponse {
-        PageDownloadResponse {
-            requested_url: requested_url.clone(),
-            body: None,
-            http_response_code,
-            headers: HashMap::new(),
-            response_timings: ResponseTimings::new(format!("FetchHeaderResponse.{}", requested_url.clone())),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::sync::{Mutex};
+    use std::sync::Mutex;
 
     use hyper::{Body, Response};
     use mockall::*;

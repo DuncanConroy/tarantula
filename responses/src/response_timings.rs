@@ -11,8 +11,8 @@ pub struct ResponseTimings {
 
 impl Serialize for ResponseTimings {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+        where
+            S: Serializer,
     {
         let mut s = serializer.serialize_struct("ResponseTimings", 3)?;
         s.serialize_field("start_time", &self.start_time.ok_or("None").unwrap().to_string())?;

@@ -631,6 +631,7 @@ dependencies = [
  "chrono",
  "ego-tree",
  "linkresult",
+ "responses",
  "scraper",
 ]
 
@@ -1347,8 +1348,8 @@ dependencies = [
  "log",
  "rand 0.8.4",
  "regex",
+ "responses",
  "scraper",
- "serde",
  "urlencoding",
 ]
 
@@ -1714,8 +1715,8 @@ dependencies = [
  "mocktopus",
  "num_cpus",
  "rand 0.8.4",
+ "responses",
  "robotstxt-with-cache",
- "serde",
  "tokio",
  "uuid",
 ]
@@ -2159,6 +2160,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3acd125665422973a33ac9d3dd2df85edad0f4ae9b00dafb1a05e43a9f5ef8e7"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "responses"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
 ]
 
 [[package]]

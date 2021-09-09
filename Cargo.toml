@@ -11,6 +11,7 @@ members = [
     "dom_parser",
     "linkresult",
     "page_loader",
+    "responses",
     "server",
 ]
 

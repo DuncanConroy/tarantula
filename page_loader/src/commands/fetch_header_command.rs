@@ -7,23 +7,26 @@ use chrono::{DateTime, Utc};
 use hyper::{Body, Response, Uri};
 use hyper::header::HeaderValue;
 use log::{debug, info, trace};
-use serde::Serialize;
+
+use responses::head_response::HeadResponse;
+use responses::redirect::Redirect;
+use responses::response_timings::ResponseTimings;
+use responses::status_code::StatusCode;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
 use crate::page_request::PageRequest;
-use crate::response_timings::ResponseTimings;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Arc<dyn HttpClient>), String>;
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(FetchHeaderResponse, Arc<dyn HttpClient>), String> {
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
         let start_time = DateTime::from(Utc::now());
         let mut uri = page_request.lock().unwrap().url.clone();
         let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
@@ -49,12 +52,12 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         }
 
         let redirects_result = redirects.unwrap_or(vec![]);
-        let result = FetchHeaderResponse {
+        let result = HeadResponse {
             redirects: redirects_result,
             http_response_code: StatusCode { code: response.status().as_u16(), label: response.status().canonical_reason().unwrap().into() },
             headers,
             requested_url: uri.clone(),
-            response_timings: ResponseTimings::from(format!("FetchHeaderResponse.{}", uri.clone()), start_time, DateTime::from(Utc::now())),
+            response_timings: ResponseTimings::from(format!("HeadResponse.{}", uri.clone()), start_time, DateTime::from(Utc::now())),
         };
         Ok((result, http_client))
     }
@@ -79,69 +82,6 @@ impl DefaultFetchHeaderCommand {
         }
         redirects_for_next.push(redirect);
         redirects_for_next
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct StatusCode {
-    pub(crate) code: u16,
-    pub(crate) label: String,
-}
-
-impl StatusCode {
-    pub fn is_success(&self) -> bool {
-        hyper::StatusCode::from_u16(self.code).unwrap().is_success()
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Redirect {
-    source: String,
-    destination: String,
-    http_response_code: StatusCode,
-    headers: HashMap<String, String>,
-    response_timings: ResponseTimings,
-}
-
-#[cfg(test)]
-impl Redirect {
-    pub fn from(source: String, destination: String) -> Redirect {
-        Redirect {
-            source: source.clone(),
-            destination,
-            http_response_code: StatusCode { code: 200, label: "OK".into() },
-            headers: HashMap::new(),
-            response_timings: ResponseTimings::new(format!("Redirects.{}", source)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FetchHeaderResponse {
-    pub requested_url: String,
-    pub redirects: Vec<Redirect>,
-    pub http_response_code: StatusCode,
-    pub headers: HashMap<String, String>,
-    pub response_timings: ResponseTimings,
-}
-
-impl FetchHeaderResponse {
-    pub fn new(requested_url: String, http_response_code: StatusCode) -> FetchHeaderResponse {
-        FetchHeaderResponse {
-            requested_url: requested_url.clone(),
-            redirects: vec![],
-            http_response_code,
-            headers: HashMap::new(),
-            response_timings: ResponseTimings::new(format!("FetchHeaderResponse.{}", requested_url.clone())),
-        }
-    }
-
-    pub fn get_final_uri(&self) -> String {
-        if self.redirects.is_empty() {
-            return self.requested_url.clone();
-        }
-
-        self.redirects.last().unwrap().destination.clone()
     }
 }
 
