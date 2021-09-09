@@ -80,11 +80,11 @@ impl PageCrawlCommand {
             let http_client = result.1;
             let fetch_header_response = result.0;
             page_response.status_code = Some(fetch_header_response.http_response_code.clone());
-            page_response.headers = Some(fetch_header_response);
-            let final_uri = page_response.headers.as_ref().unwrap().get_final_uri();
+            page_response.head = Some(fetch_header_response);
+            let final_uri = page_response.head.as_ref().unwrap().get_final_uri();
             page_response.final_url_after_redirects = Some(final_uri.clone());
 
-            let headers = &page_response.headers.as_ref().unwrap().headers;
+            let headers = &page_response.head.as_ref().unwrap().headers;
             if self.should_download_page(headers, &page_response.status_code) {
                 let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client).await;
                 if let Ok(download_result) = page_download_response {
@@ -439,7 +439,7 @@ mod tests {
         // then: expect some PageResponse with Teapot status code
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.as_ref().unwrap().code, StatusCode::IM_A_TEAPOT.as_u16());
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
     }
 
@@ -473,12 +473,12 @@ mod tests {
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().status_code.as_ref().unwrap().code, StatusCode::INTERNAL_SERVER_ERROR.as_u16());
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_none(), true, "Should not have body, if status is not ok");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
         let is_page_response_before_featch_header_response = crawl_result.as_ref().unwrap().as_ref().unwrap()
             .response_timings.start_time.as_ref().unwrap()
             .cmp(crawl_result.as_ref().unwrap().as_ref().unwrap()
-                .headers.as_ref().unwrap()
+                .head.as_ref().unwrap()
                 .response_timings.start_time.as_ref().unwrap());
         assert_eq!(is_page_response_before_featch_header_response, Ordering::Less, "PageResponse start_time should be before FetchHeaderResponse start_time");
     }
@@ -516,7 +516,7 @@ mod tests {
 
         // then: expect some PageResponse without body
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_none(), true, "Should not have body, if status content-type is not text/html");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
     }
 
     #[tokio::test]
@@ -581,7 +581,7 @@ mod tests {
         // then: expect some PageResponse with body
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.is_some(), true, "Should have body, if status content-type is text/html");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().body.as_ref().unwrap(), &String::from("<html><p>Hello World!</p></html>"), "Should have body, if status content-type is text/html");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().headers.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().final_url_after_redirects.is_some(), true, "Should have final_url_after_redirects updated");
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().final_url_after_redirects.as_ref().unwrap(), "https://final-redirection.example.com", "Should have final_url_after_redirects set to requested url");
     }

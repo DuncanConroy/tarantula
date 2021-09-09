@@ -11,10 +11,10 @@ pub struct PageResponse {
     pub original_requested_url_raw: String,
     pub final_url_after_redirects: Option<String>,
     pub status_code: Option<StatusCode>,
-    pub headers: Option<FetchHeaderResponse>,
+    pub head: Option<FetchHeaderResponse>,
     pub body: Option<String>,
     pub links: Option<Vec<Link>>,
-    pub response_timings: ResponseTimings
+    pub response_timings: ResponseTimings,
 }
 
 impl PageResponse {
@@ -26,7 +26,7 @@ impl PageResponse {
             original_requested_url_raw,
             final_url_after_redirects: None,
             status_code: None,
-            headers: None,
+            head: None,
             body: None,
             links: None,
             response_timings,
