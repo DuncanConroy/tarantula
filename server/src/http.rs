@@ -58,6 +58,7 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
         let mut responses = 0;
         while let Some(event) = resp_rx.recv().await {
             let payload: String;
+            let do_break: bool;
             match event {
                 CrawlerEvent::PageEvent { page_response } => {
                     let page_response_json = rocket::serde::json::serde_json::to_string(&page_response).unwrap();
@@ -66,11 +67,13 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
                     info!(". -> {}", responses);
 
                     payload = page_response_json;
+                    do_break = false;
                 }
                 CrawlerEvent::CompleteEvent { uuid } => {
                     let complete_response = CompleteResponse { uuid };
                     info!("Received from threads - CompleteEvent: {:?}", complete_response);
                     payload = rocket::serde::json::serde_json::to_string(&complete_response).unwrap();
+                    do_break = true;
                 }
             }
 
@@ -83,6 +86,8 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
                     .expect(&format!("POST request builder"));
                 client.request(req).await.expect("Couldn't send request to callback");
             };
+
+            if do_break { break; }
         }
     });
 
