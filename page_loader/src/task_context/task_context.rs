@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use hyper::Uri;
+use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -10,11 +11,12 @@ use dom_parser::{DomParser, DomParserService};
 use linkresult::LinkTypeChecker;
 use linkresult::uri_service::UriService;
 
+use crate::events::crawler_event::CrawlerEvent;
 use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::task_context::robots_service::{RobotsService, RobotsTxt};
 
 pub trait TaskContextInit {
-    fn init(uri: String, uuid: Uuid) -> Self;
+    fn init(uri: String, uuid: Uuid, response_channel: Sender<CrawlerEvent>) -> Self;
 }
 
 pub trait TaskContext: Sync + Send {
@@ -24,6 +26,7 @@ pub trait TaskContext: Sync + Send {
     fn get_last_command_received(&self) -> Instant;
     fn set_last_command_received(&mut self, instant: Instant);
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
+    fn get_response_channel(&self) -> Sender<CrawlerEvent>;
 }
 
 pub trait TaskContextServices: Sync + Send {
@@ -50,10 +53,11 @@ pub struct DefaultTaskContext {
     uuid: Uuid,
     last_command_received: Instant,
     all_known_links: Arc<Mutex<Vec<String>>>,
+    response_channel: Sender<CrawlerEvent>,
 }
 
 impl TaskContextInit for DefaultTaskContext {
-    fn init(uri: String, uuid: Uuid) -> DefaultTaskContext {
+    fn init(uri: String, uuid: Uuid, response_channel: Sender<CrawlerEvent>) -> DefaultTaskContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let task_config = Arc::new(Mutex::new(TaskConfig::new(uri)));
         let user_agent = task_config.lock().unwrap().user_agent.clone();
@@ -75,6 +79,7 @@ impl TaskContextInit for DefaultTaskContext {
             uuid,
             last_command_received,
             all_known_links,
+            response_channel,
         }
     }
 }
@@ -102,6 +107,10 @@ impl TaskContext for DefaultTaskContext {
         } else {
             false
         };
+    }
+
+    fn get_response_channel(&self) -> Sender<CrawlerEvent> {
+        self.response_channel.clone()
     }
 }
 
@@ -162,13 +171,16 @@ impl TaskConfig {
 mod tests {
     use std::thread;
 
+    use tokio::sync::mpsc;
+
     use super::*;
 
-    #[test]
-    fn can_be_garbage_collected_false_by_default() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn can_be_garbage_collected_false_by_default() {
         // given: a usual task context
         let gc_timeout_ms = 10;
-        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4());
+        let (resp_tx, _) = mpsc::channel(2);
+        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4(), resp_tx);
 
         // when: can_be_garbage_collected is invoked
         let result = context.can_be_garbage_collected(gc_timeout_ms);
@@ -177,10 +189,11 @@ mod tests {
         assert_eq!(result, false, "TaskContext should not be garbage collectable at this point");
     }
 
-    #[test]
-    fn can_be_garbage_collected_true_on_timeout() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn can_be_garbage_collected_true_on_timeout() {
         // given: a usual task context
-        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4());
+        let (resp_tx, _) = mpsc::channel(2);
+        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4(), resp_tx);
         let gc_timeout_ms = 10u64;
 
         // when: can_be_garbage_collected is invoked after gc_timeout_ms * 2

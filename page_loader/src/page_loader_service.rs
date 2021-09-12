@@ -54,7 +54,7 @@ impl PageLoaderService {
     fn new() -> PageLoaderService {
         PageLoaderService {
             mpsc_sender: None,
-            task_manager: Box::new(DefaultTaskManager::init(60_000)),
+            task_manager: Box::new(DefaultTaskManager::init(10_000)),
         }
     }
 
@@ -88,7 +88,7 @@ impl PageLoaderService {
                     }
                     Command::CrawlDomainCommand { url, response_channel, task_context_uuid, .. } => {
                         debug!("received CrawlDomainCommand with url: {} and uuid: {} on thread {:?}", url, task_context_uuid, thread::current().name());
-                        let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(url.clone(), task_context_uuid)));
+                        let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(url.clone(), task_context_uuid, response_channel.clone())));
                         arc_page_loader_service_clone.task_manager.lock().unwrap().add_task(task_context.clone());
                         tx_clone.send(LoadPageCommand { url: url.clone(), raw_url: url, response_channel, task_context: task_context.clone(), current_depth: 0 }).await.expect("Problem with spawned worker thread for CrawlDomainCommand");
                     }
@@ -225,8 +225,8 @@ mod tests {
     }
 
     impl StubPageCrawlCommand {
-        fn new(url: String) -> StubPageCrawlCommand {
-            let task_context = create_default_task_context();
+        fn new(url: String, response_channel: Sender<CrawlerEvent>) -> StubPageCrawlCommand {
+            let task_context = create_default_task_context(response_channel);
             let page_request = Arc::new(Mutex::new(PageRequest::new(url.clone(), url.clone(), None, task_context.clone())));
             StubPageCrawlCommand { url, task_context, page_request }
         }
@@ -281,14 +281,15 @@ mod tests {
     impl CommandFactory for StubFactory {
         #[allow(unused)] // necessary, because we're stubbing this and not actually using everything that is provided by the trait signature
         fn create_page_crawl_command(&self, url: String, raw_url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16) -> Box<dyn CrawlCommand> {
-            let mut command = StubPageCrawlCommand::new(url);
+            let response_channel = task_context.lock().unwrap().get_response_channel().clone();
+            let mut command = StubPageCrawlCommand::new(url, response_channel);
             command.task_context = task_context;
             Box::new(command)
         }
     }
 
-    fn create_default_task_context() -> Arc<Mutex<DefaultTaskContext>> {
-        Arc::new(Mutex::new(DefaultTaskContext::init(String::from("https://example.com"), Uuid::new_v4())))
+    fn create_default_task_context(response_channel: Sender<CrawlerEvent>) -> Arc<Mutex<DefaultTaskContext>> {
+        Arc::new(Mutex::new(DefaultTaskContext::init(String::from("https://example.com"), Uuid::new_v4(), response_channel)))
     }
 
     #[tokio::test]
@@ -320,7 +321,7 @@ mod tests {
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
         let (resp_tx, mut resp_rx) = mpsc::channel(2);
-        let task_context = create_default_task_context();
+        let task_context = create_default_task_context(resp_tx.clone());
 
         // when
         // NOTE: use "/inner" in the url to trick the StubPageCrawlCommand
@@ -342,7 +343,7 @@ mod tests {
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
         let (resp_tx, mut resp_rx) = mpsc::channel(2);
-        let task_context = create_default_task_context();
+        let task_context = create_default_task_context(resp_tx.clone());
         let initial_last_command_received_instant = task_context.lock().unwrap().get_last_command_received();
 
         // when
@@ -361,7 +362,7 @@ mod tests {
         let stub_page_crawl_command_factory = StubFactory::new();
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
         let (resp_tx, mut resp_rx) = mpsc::channel(2);
-        let task_context = create_default_task_context();
+        let task_context = create_default_task_context(resp_tx.clone());
 
         // when
         let send_result = tx.send(LoadPageCommand { url: String::from("https://example.com"), raw_url: String::from("/"), response_channel: resp_tx.clone(), task_context: task_context.clone(), current_depth: 0 }).await;
