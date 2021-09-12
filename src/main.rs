@@ -1,32 +1,44 @@
-#[macro_use] extern crate rocket;
+#[macro_use]
+extern crate rocket;
 
 // use clap::App;
 // use clap::load_yaml;
 // use log::info;
 // use tokio::sync::mpsc;
 
+use clap::App;
+use clap::load_yaml;
+use log::info;
+use tokio::sync::mpsc;
+
+use page_loader::page_loader_service::Command::CrawlDomainCommand;
+use page_loader::page_loader_service::PageLoaderService;
+use server::http::{crawl, RunConfig};
+use std::fs::File;
+use std::process;
+use std::io::Write;
 // use page_loader::page_loader_service::Command::CrawlDomainCommand;
 // use page_loader::page_loader_service::PageLoaderService;
-use server::http::crawl;
 
 // A simple type alias so as to DRY.
 pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-#[launch]
-pub async fn rocket() -> _ {
-    rocket::build().mount("/", routes![crawl])
-}
-
-// #[tokio::main]
-// // #[rocket::main]
-// async fn main() -> DynResult<()> {
-//     log4rs::init_file("config/log4rs.yaml", Default::default()).unwrap();
-//     info!("Starting tarantula");
-//     // rocket::build().mount("/", routes![crawl, crawl_get]).launch();
 //
-//     process().await;
-//     Ok(())
+// #[launch]
+// pub async fn rocket() -> _ {
+//     rocket::build().mount("/", routes![crawl])
 // }
+
+#[rocket::main]
+async fn main() -> DynResult<()> {
+    let mut file = File::create("process.pid").unwrap();
+    file.write_all(process::id().to_string().as_bytes()).unwrap();
+    log4rs::init_file("config/log4rs.yaml", Default::default()).unwrap();
+    info!("Starting tarantula");
+
+    let _ = rocket::build().mount("/", routes![crawl]).launch().await;
+
+    Ok(())
+}
 
 // fn parse_runconfig_from_args() -> Result<RunConfig, &'static str> {
 //     let yaml = load_yaml!("cli.yaml");

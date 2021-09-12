@@ -13,3 +13,4 @@ Cargo.lock
 
 # no logs in git
 **/*.log
+/process.pid
