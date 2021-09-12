@@ -1,4 +1,5 @@
 use serde::Serialize;
+use uuid::Uuid;
 
 use crate::get_response::GetResponse;
 use crate::head_response::HeadResponse;
@@ -14,10 +15,11 @@ pub struct PageResponse {
     pub get: Option<GetResponse>,
     pub links: Option<Vec<Link>>,
     pub response_timings: ResponseTimings,
+    pub uuid: Uuid,
 }
 
 impl PageResponse {
-    pub fn new(original_requested_url: String, original_requested_url_raw: String) -> PageResponse {
+    pub fn new(original_requested_url: String, original_requested_url_raw: String, uuid: Uuid) -> PageResponse {
         let response_timings_name = format!("PageResponse.{}", original_requested_url);
         let response_timings = ResponseTimings::new(response_timings_name);
         PageResponse {
@@ -28,6 +30,7 @@ impl PageResponse {
             get: None,
             links: None,
             response_timings,
+            uuid,
         }
     }
 }

@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -11,13 +12,12 @@ use linkresult::uri_service::UriService;
 
 use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::task_context::robots_service::{RobotsService, RobotsTxt};
-use std::fmt::Debug;
 
 pub trait TaskContextInit {
-    fn init(uri: String) -> Self;
+    fn init(uri: String, uuid: Uuid) -> Self;
 }
 
-pub trait TaskContext: Sync + Send  {
+pub trait TaskContext: Sync + Send {
     fn get_uuid_clone(&self) -> Uuid;
     fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
     fn get_url(&self) -> String;
@@ -53,7 +53,7 @@ pub struct DefaultTaskContext {
 }
 
 impl TaskContextInit for DefaultTaskContext {
-    fn init(uri: String) -> DefaultTaskContext {
+    fn init(uri: String, uuid: Uuid) -> DefaultTaskContext {
         let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
         let task_config = Arc::new(Mutex::new(TaskConfig::new(uri)));
         let user_agent = task_config.lock().unwrap().user_agent.clone();
@@ -63,7 +63,6 @@ impl TaskContextInit for DefaultTaskContext {
         let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         let robots_service = Arc::new(RobotsService::new(user_agent.clone()));
         let http_client = Arc::new(HttpClientImpl::new(user_agent.clone(), crawl_delay_ms.clone()));
-        let uuid = Uuid::new_v4();
         let all_known_links = Arc::new(Mutex::new(vec![]));
         let last_command_received = Instant::now();
         DefaultTaskContext {
@@ -141,7 +140,7 @@ pub struct TaskConfig {
     pub ignore_robots_txt: bool,
     pub keep_html_in_memory: bool,
     pub user_agent: String,
-    pub crawl_delay_ms: usize
+    pub crawl_delay_ms: usize,
 }
 
 impl TaskConfig {
@@ -154,7 +153,7 @@ impl TaskConfig {
             ignore_robots_txt: false,
             keep_html_in_memory: false,
             user_agent: String::from("tarantula"),
-            crawl_delay_ms: 1_000
+            crawl_delay_ms: 1_000,
         }
     }
 }
@@ -169,7 +168,7 @@ mod tests {
     fn can_be_garbage_collected_false_by_default() {
         // given: a usual task context
         let gc_timeout_ms = 10;
-        let context = DefaultTaskContext::init("https://example.com".into());
+        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4());
 
         // when: can_be_garbage_collected is invoked
         let result = context.can_be_garbage_collected(gc_timeout_ms);
@@ -181,7 +180,7 @@ mod tests {
     #[test]
     fn can_be_garbage_collected_true_on_timeout() {
         // given: a usual task context
-        let context = DefaultTaskContext::init("https://example.com".into());
+        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4());
         let gc_timeout_ms = 10u64;
 
         // when: can_be_garbage_collected is invoked after gc_timeout_ms * 2

@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::header::CONTENT_TYPE;
 use log::debug;
+use uuid::Uuid;
 
 use responses::link::Link;
 use responses::page_response::PageResponse;
@@ -20,7 +21,7 @@ use crate::task_context::task_context::FullTaskContext;
 pub trait CrawlCommand: Sync + Send {
     fn get_url_clone(&self) -> String;
     fn get_page_request(&self) -> Arc<Mutex<PageRequest>>;
-    async fn crawl(&self, http_client: Arc<dyn HttpClient>) -> Result<Option<PageResponse>, String>;
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid) -> Result<Option<PageResponse>, String>;
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
 }
@@ -71,11 +72,11 @@ impl PageCrawlCommand {
         true
     }
 
-    async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+    async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid) -> Result<Option<PageResponse>, String> {
         let request_object_cloned = self.request_object.clone();
         let url = request_object_cloned.lock().unwrap().url.clone();
         let raw_url = request_object_cloned.lock().unwrap().raw_url.clone();
-        let mut page_response = PageResponse::new(url, raw_url);
+        let mut page_response = PageResponse::new(url, raw_url, task_context_uuid.clone());
         let fetch_header_response = self.fetch_header_command.fetch_header(request_object_cloned, http_client, None).await;
         if let Ok(result) = fetch_header_response {
             let http_client = result.1;
@@ -139,12 +140,12 @@ impl CrawlCommand for PageCrawlCommand {
 
     fn get_page_request(&self) -> Arc<Mutex<PageRequest>> { self.request_object.clone() }
 
-    async fn crawl(&self, http_client: Arc<dyn HttpClient>) -> Result<Option<PageResponse>, String> {
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid) -> Result<Option<PageResponse>, String> {
         if !self.verify_crawlability() {
             return Ok(None);
         }
 
-        self.perform_crawl_internal(http_client).await
+        self.perform_crawl_internal(http_client, task_context_uuid).await
     }
 
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>> {
@@ -274,7 +275,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect none
         assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl, if max depth reached");
@@ -309,7 +310,7 @@ mod tests {
             9000,
             mock_fetch_header_command,
             mock_page_download_command);
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect some
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl, if max depth not reached, yet");
@@ -337,7 +338,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command);
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect none
         assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl, if url is known");
@@ -371,7 +372,7 @@ mod tests {
             1,
             mock_fetch_header_command,
             mock_page_download_command);
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect some
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl, if url is unknown");
@@ -401,7 +402,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect none
         assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt");
@@ -431,7 +432,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect some PageResponse with Teapot status code
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
@@ -464,7 +465,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect some PageResponse with InternalServerError status code and no body
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
@@ -509,7 +510,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect some PageResponse without body
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.is_none(), true, "Should not have get response, if status content-type is not text/html");
@@ -573,7 +574,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
 
         // then: expect some PageResponse with body
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.as_ref().unwrap().body.is_some(), true, "Should have body, if status content-type is text/html");
