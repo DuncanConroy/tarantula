@@ -3,6 +3,7 @@
 // Event-driven page loader
 
 mod commands;
+pub mod events;
 mod http;
 pub mod page_request;
 pub mod page_loader_service;
