@@ -15,7 +15,7 @@ pub struct PageResponse {
     pub get: Option<GetResponse>,
     pub links: Option<Vec<Link>>,
     pub response_timings: ResponseTimings,
-    pub uuid: Uuid,
+    pub task_uuid: Uuid,
 }
 
 impl PageResponse {
@@ -30,7 +30,7 @@ impl PageResponse {
             get: None,
             links: None,
             response_timings,
-            uuid,
+            task_uuid: uuid,
         }
     }
 }

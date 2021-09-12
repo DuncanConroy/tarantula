@@ -16,6 +16,8 @@ use responses::uri_scope::UriScope;
 use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
 use crate::commands::page_download_command::DefaultPageDownloadCommand;
+use crate::events::crawler_event::CrawlerEvent;
+use crate::events::crawler_event::CrawlerEvent::PageEvent;
 use crate::page_loader_service::Command::LoadPageCommand;
 use crate::task_context::task_context::{DefaultTaskContext, FullTaskContext, TaskContextInit};
 use crate::task_context_manager::{DefaultTaskManager, TaskManager};
@@ -99,7 +101,7 @@ impl PageLoaderService {
     }
 }
 
-async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<Command>) {
+async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<Command>) {
     // updated last_command_received for garbage collection handling
     page_crawl_command.get_task_context().lock().unwrap().set_last_command_received(Instant::now());
     let url = page_crawl_command.get_url_clone();
@@ -144,7 +146,7 @@ async fn do_load(response_channel: Sender<PageResponse>, page_crawl_command: Box
                     }
                 }
             }
-            response_channel.send(crawl_result).await.expect("Could not send result to response channel");
+            response_channel.send(PageEvent { page_response: crawl_result }).await.expect("Could not send result to response channel");
         } else {
             // todo: send some response to response channel - we got nothing here :)
             // todo!("Proper error handling");
@@ -171,13 +173,13 @@ pub enum Command {
     LoadPageCommand {
         url: String,
         raw_url: String,
-        response_channel: mpsc::Sender<PageResponse>,
+        response_channel: mpsc::Sender<CrawlerEvent>,
         task_context: Arc<Mutex<dyn FullTaskContext>>,
         current_depth: u16,
     },
     CrawlDomainCommand {
         url: String,
-        response_channel: mpsc::Sender<PageResponse>,
+        response_channel: mpsc::Sender<CrawlerEvent>,
         task_context_uuid: Uuid,
         last_crawled_timestamp: u64,
     },
@@ -193,7 +195,7 @@ impl fmt::Debug for Command {
                 .field("current_depth", &current_depth)
                 .finish(),
             #[allow(unused_variables)] // allowing, as this is the signature
-            Command::CrawlDomainCommand { url, response_channel, task_context_uuid,  last_crawled_timestamp } => f.debug_struct("CrawlDomainCommand")
+            Command::CrawlDomainCommand { url, response_channel, task_context_uuid, last_crawled_timestamp } => f.debug_struct("CrawlDomainCommand")
                 .field("url", &url)
                 .field("task_context_uuid", &task_context_uuid)
                 .field("last_crawled_timestamp", &last_crawled_timestamp)
@@ -305,8 +307,11 @@ mod tests {
         // then
         assert_eq!(true, send_result.is_ok());
         let expected_result = PageResponse::new("https://example.com/inner".into(), "/inner".into(), Uuid::new_v4());
-        let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
+        if let CrawlerEvent::PageEvent { page_response: actual_result } = resp_rx.recv().await.unwrap() {
+            assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
+        } else {
+            panic!("Wrong type!");
+        }
     }
 
     #[tokio::test]
@@ -324,8 +329,11 @@ mod tests {
         // then
         assert_eq!(true, send_result.is_ok());
         let expected_result = PageResponse::new("https://example.com/inner".into(), "inner".into(), Uuid::new_v4());
-        let actual_result = resp_rx.recv().await.unwrap();
-        assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
+        if let CrawlerEvent::PageEvent { page_response: actual_result } = resp_rx.recv().await.unwrap() {
+            assert_eq!(expected_result.original_requested_url, actual_result.original_requested_url);
+        } else {
+            panic!("Wrong type");
+        }
     }
 
     #[tokio::test]
@@ -367,12 +375,15 @@ mod tests {
 
         let mut actual_results = vec![];
         for _ in 0..expected_results.len() {
-            let actual_result = resp_rx.recv().await.unwrap();
-            let expected_result = expected_results
-                .drain_filter(|it: &mut PageResponse| it.original_requested_url.eq(&actual_result.original_requested_url));
-            println!("Got {:?}", actual_result);
-            assert_eq!(expected_result.count(), 1);
-            actual_results.push(actual_result);
+            if let CrawlerEvent::PageEvent { page_response: actual_result } = resp_rx.recv().await.unwrap() {
+                let expected_result = expected_results
+                    .drain_filter(|it: &mut PageResponse| it.original_requested_url.eq(&actual_result.original_requested_url));
+                println!("Got {:?}", actual_result);
+                assert_eq!(expected_result.count(), 1);
+                actual_results.push(actual_result);
+            } else {
+                panic!("Wrong type");
+            }
         }
 
         assert_eq!(expected_results.len(), 0);

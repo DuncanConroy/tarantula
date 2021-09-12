@@ -7,6 +7,7 @@ use rocket::tokio::sync::mpsc;
 use serde::Serialize;
 use uuid::Uuid;
 
+use page_loader::events::crawler_event::CrawlerEvent;
 use page_loader::page_loader_service::Command::CrawlDomainCommand;
 use page_loader::page_loader_service::PageLoaderService;
 
@@ -55,18 +56,29 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
 
     let manager = tokio::spawn(async move {
         let mut responses = 0;
-        while let Some(page_response) = resp_rx.recv().await {
-            let page_response_json = rocket::serde::json::serde_json::to_string(&page_response).unwrap();
-            info!("Received from threads: {:?}", page_response_json.clone());
-            responses = responses + 1;
-            info!(". -> {}", responses);
+        while let Some(event) = resp_rx.recv().await {
+            let mut payload: String;
+            match event {
+                CrawlerEvent::PageEvent { page_response } => {
+                    let page_response_json = rocket::serde::json::serde_json::to_string(&page_response).unwrap();
+                    info!("Received from threads - PageEvent: {:?}", page_response_json.clone());
+                    responses = responses + 1;
+                    info!(". -> {}", responses);
+
+                    payload = page_response_json;
+                }
+                CrawlerEvent::CompleteEvent { uuid } => {
+                    info!("Received from threads - CompleteEvent: {:?}", uuid);
+                    payload = format!("{}", uuid);
+                }
+            }
 
             if let Some(callback_url) = run_config.callback_url.clone() {
                 let req = Request::builder()
                     .header("user-agent", run_config.user_agent.as_ref().unwrap().clone())
                     .method("POST")
                     .uri(callback_url)
-                    .body(Body::from(page_response_json))
+                    .body(Body::from(payload))
                     .expect(&format!("POST request builder"));
                 client.request(req).await;
             }
