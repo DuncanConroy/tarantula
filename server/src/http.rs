@@ -1,8 +1,11 @@
 use hyper::{Body, Client, Request};
 use hyper_tls::HttpsConnector;
+use rocket::response::status;
 use rocket::serde::{Deserialize, json::Json};
 use rocket::tokio;
 use rocket::tokio::sync::mpsc;
+use serde::Serialize;
+use uuid::Uuid;
 
 use page_loader::page_loader_service::Command::CrawlDomainCommand;
 use page_loader::page_loader_service::PageLoaderService;
@@ -10,12 +13,12 @@ use page_loader::page_loader_service::PageLoaderService;
 #[derive(Clone, Debug, Deserialize)]
 pub struct RunConfig {
     pub url: String,
-    pub ignore_redirects: bool,
-    pub maximum_redirects: u8,
-    pub maximum_depth: u8,
-    pub ignore_robots_txt: bool,
-    pub keep_html_in_memory: bool,
-    pub user_agent: String,
+    pub ignore_redirects: Option<bool>,
+    pub maximum_redirects: Option<u8>,
+    pub maximum_depth: Option<u8>,
+    pub ignore_robots_txt: Option<bool>,
+    pub keep_html_in_memory: Option<bool>,
+    pub user_agent: Option<String>,
     pub callback_url: Option<String>,
 }
 
@@ -23,29 +26,30 @@ impl RunConfig {
     pub fn new(url: String, callback_url: Option<String>) -> RunConfig {
         RunConfig {
             url,
-            ignore_redirects: false,
-            maximum_redirects: 10,
-            maximum_depth: 16,
-            ignore_robots_txt: false,
-            keep_html_in_memory: false,
-            user_agent: String::from("tarantula"),
+            ignore_redirects: Some(false),
+            maximum_redirects: Some(10),
+            maximum_depth: Some(16),
+            ignore_robots_txt: Some(false),
+            keep_html_in_memory: Some(false),
+            user_agent: Some(String::from("tarantula")),
             callback_url,
         }
     }
 }
 
 #[put("/crawl", data = "<run_config>")]
-pub fn crawl(run_config: Json<RunConfig>) -> &'static str {
-    tokio::spawn(process(run_config.0));
-    "OK"
+pub fn crawl(run_config: Json<RunConfig>) -> status::Accepted<String> {
+    let task_context_uuid = Uuid::new_v4();
+    tokio::spawn(process(run_config.0, task_context_uuid.clone()));
+    status::Accepted(Some(format!("{}", task_context_uuid)))
 }
 
-async fn process(run_config:RunConfig) {
+async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
     let num_cpus = num_cpus::get();
     let tx = PageLoaderService::init();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
 
-    let send_result = tx.send(CrawlDomainCommand { url: run_config.url.clone(), last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
+    let send_result = tx.send(CrawlDomainCommand { url: run_config.url.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
     let connector = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(connector);
 
@@ -59,7 +63,7 @@ async fn process(run_config:RunConfig) {
 
             if let Some(callback_url) = run_config.callback_url.clone() {
                 let req = Request::builder()
-                    .header("user-agent", run_config.user_agent.clone())
+                    .header("user-agent", run_config.user_agent.as_ref().unwrap().clone())
                     .method("POST")
                     .uri(callback_url)
                     .body(Body::from(page_response_json))
