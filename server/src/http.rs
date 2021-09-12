@@ -4,12 +4,12 @@ use rocket::response::status;
 use rocket::serde::{Deserialize, json::Json};
 use rocket::tokio;
 use rocket::tokio::sync::mpsc;
-use serde::Serialize;
 use uuid::Uuid;
 
 use page_loader::events::crawler_event::CrawlerEvent;
 use page_loader::page_loader_service::Command::CrawlDomainCommand;
 use page_loader::page_loader_service::PageLoaderService;
+use responses::complete_response::CompleteResponse;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct RunConfig {
@@ -50,26 +50,27 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
     let tx = PageLoaderService::init();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
 
-    let send_result = tx.send(CrawlDomainCommand { url: run_config.url.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
+    let _send_result = tx.send(CrawlDomainCommand { url: run_config.url.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
     let connector = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(connector);
 
     let manager = tokio::spawn(async move {
         let mut responses = 0;
         while let Some(event) = resp_rx.recv().await {
-            let mut payload: String;
+            let payload: String;
             match event {
                 CrawlerEvent::PageEvent { page_response } => {
                     let page_response_json = rocket::serde::json::serde_json::to_string(&page_response).unwrap();
-                    info!("Received from threads - PageEvent: {:?}", page_response_json.clone());
+                    info!("Received from threads - PageEvent: {:?}", page_response);
                     responses = responses + 1;
                     info!(". -> {}", responses);
 
                     payload = page_response_json;
                 }
                 CrawlerEvent::CompleteEvent { uuid } => {
-                    info!("Received from threads - CompleteEvent: {:?}", uuid);
-                    payload = format!("{}", uuid);
+                    let complete_response = CompleteResponse { uuid };
+                    info!("Received from threads - CompleteEvent: {:?}", complete_response);
+                    payload = rocket::serde::json::serde_json::to_string(&complete_response).unwrap();
                 }
             }
 
@@ -80,8 +81,8 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
                     .uri(callback_url)
                     .body(Body::from(payload))
                     .expect(&format!("POST request builder"));
-                client.request(req).await;
-            }
+                client.request(req).await.expect("Couldn't send request to callback");
+            };
         }
     });
 

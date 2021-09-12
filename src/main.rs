@@ -1,15 +1,13 @@
 #[macro_use] extern crate rocket;
 
-use std::str::FromStr;
+// use clap::App;
+// use clap::load_yaml;
+// use log::info;
+// use tokio::sync::mpsc;
 
-use clap::App;
-use clap::load_yaml;
-use log::info;
-use tokio::sync::mpsc;
-
-use page_loader::page_loader_service::Command::CrawlDomainCommand;
-use page_loader::page_loader_service::PageLoaderService;
-use server::http::{crawl, RunConfig};
+// use page_loader::page_loader_service::Command::CrawlDomainCommand;
+// use page_loader::page_loader_service::PageLoaderService;
+use server::http::crawl;
 
 // A simple type alias so as to DRY.
 pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;

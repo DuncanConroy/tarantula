@@ -89,6 +89,7 @@ impl DefaultFetchHeaderCommand {
 mod tests {
     use mockall::*;
     use mockall::predicate::eq;
+    use tokio::sync::mpsc::Sender;
     use tokio::time::Instant;
     use uuid::Uuid;
 
@@ -96,6 +97,7 @@ mod tests {
     use linkresult::LinkTypeChecker;
     use linkresult::uri_service::UriService;
 
+    use crate::events::crawler_event::CrawlerEvent;
     use crate::task_context::robots_service::RobotsTxt;
     use crate::task_context::task_context::{FullTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextServices};
 
@@ -110,6 +112,7 @@ mod tests {
             fn get_last_command_received(&self) -> Instant;
             fn set_last_command_received(&mut self, instant: Instant);
             fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
+            fn get_response_channel(&self) -> Sender<CrawlerEvent>;
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;

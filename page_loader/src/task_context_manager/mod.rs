@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::events::crawler_event::CrawlerEvent;
 use crate::task_context::task_context::TaskContext;
 
 pub trait TaskManager: Sync + Send {
@@ -55,7 +56,14 @@ impl DefaultTaskManager {
     }
 
     fn do_garbage_collection(&mut self) {
-        self.tasks.lock().unwrap().retain(|_, value| { !value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) })
+        for (_, value) in self.tasks.lock().unwrap().iter() {
+            if value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) {
+                let uuid = value.lock().unwrap().get_uuid_clone();
+                 value.lock().unwrap().get_response_channel().blocking_send(CrawlerEvent::CompleteEvent { uuid }).unwrap();
+            }
+        }
+
+        self.tasks.lock().unwrap().retain(|_, value|  !value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms))
     }
 }
 
@@ -64,10 +72,13 @@ mod tests {
     use std::sync::Arc;
 
     use mockall::*;
+    use tokio::sync::mpsc;
+    use tokio::sync::mpsc::Sender;
     use tokio::time::Duration;
     use tokio::time::Instant;
     use uuid::Uuid;
 
+    use crate::events::crawler_event::CrawlerEvent;
     use crate::task_context::task_context::{TaskConfig, TaskContext};
 
     use super::*;
@@ -81,18 +92,23 @@ mod tests {
             fn get_last_command_received(&self) -> Instant;
             fn set_last_command_received(&mut self, instant: Instant);
             fn can_be_garbage_collected(&self, gc_timeout_ms: u64)-> bool;
+            fn get_response_channel(&self) -> Sender<CrawlerEvent>;
         }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn added_task_context_gets_garbage_collected_after_timeout() {
         // given
+        let (resp_tx, mut resp_rx) = mpsc::channel(2);
+        let expected_uuid = Uuid::new_v4();
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_can_be_garbage_collected().returning(|#[allow(unused_variables)] // allowing, as we don't use gc_timeout_ms
                                                                        gc_timeout_ms: u64| true);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
+        mock_task_context.expect_get_response_channel().return_const(resp_tx);
+        mock_task_context.expect_get_uuid_clone().return_const(expected_uuid);
         let task_context = Arc::new(Mutex::new(mock_task_context));
-        let gc_timeout_ms = 1u64;
+        let gc_timeout_ms = 100u64;
         let task_manager = DefaultTaskManager::init(gc_timeout_ms);
 
         tokio::spawn(async move {
@@ -102,7 +118,12 @@ mod tests {
             //then
             let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
             assert_eq!(num_tasks, 1, "task was not added");
-            tokio::time::sleep(Duration::from_secs(gc_timeout_ms as u64 * 2)).await;
+            tokio::time::sleep(Duration::from_millis(gc_timeout_ms as u64 * 2)).await;
+            if let CrawlerEvent::CompleteEvent { uuid: actual_uuid } = resp_rx.recv().await.unwrap() {
+                assert_eq!(expected_uuid, actual_uuid);
+            } else {
+                panic!("No complete event received before garbage collection!");
+            }
             let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
             assert_eq!(num_tasks, 0, "task was not removed");
         }).await.unwrap();
@@ -116,7 +137,7 @@ mod tests {
                                                                        gc_timeout_ms: u64| false);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
         let task_context = Arc::new(Mutex::new(mock_task_context));
-        let gc_timeout_ms = 1u64;
+        let gc_timeout_ms = 100u64;
         let task_manager = DefaultTaskManager::init(gc_timeout_ms);
 
         tokio::spawn(async move {
@@ -126,7 +147,7 @@ mod tests {
             //then
             let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
             assert_eq!(num_tasks, 1, "task was not added");
-            tokio::time::sleep(Duration::from_secs(gc_timeout_ms as u64 * 2)).await;
+            tokio::time::sleep(Duration::from_millis(gc_timeout_ms as u64 * 2)).await;
             let num_tasks = task_manager.lock().unwrap().get_number_of_tasks();
             assert_eq!(num_tasks, 1, "task was not removed");
         }).await.unwrap();
