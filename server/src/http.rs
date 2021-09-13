@@ -1,14 +1,17 @@
+use std::ops::Deref;
+
 use hyper::{Body, Client, Request};
 use hyper_tls::HttpsConnector;
+use rocket::{State, tokio};
 use rocket::response::status;
 use rocket::serde::{Deserialize, json::Json};
-use rocket::tokio;
 use rocket::tokio::sync::mpsc;
+use rocket::tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 use page_loader::events::crawler_event::CrawlerEvent;
+use page_loader::page_loader_service::Command;
 use page_loader::page_loader_service::Command::CrawlDomainCommand;
-use page_loader::page_loader_service::PageLoaderService;
 use responses::complete_response::CompleteResponse;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -39,18 +42,17 @@ impl RunConfig {
 }
 
 #[put("/crawl", data = "<run_config>")]
-pub fn crawl(run_config: Json<RunConfig>) -> status::Accepted<String> {
+pub fn crawl(run_config: Json<RunConfig>, page_loader_tx_channel: &State<Sender<Command>>) -> status::Accepted<String> {
     let task_context_uuid = Uuid::new_v4();
-    tokio::spawn(process(run_config.0, task_context_uuid.clone()));
+    tokio::spawn(process(run_config.0, task_context_uuid.clone(), page_loader_tx_channel.deref().deref().clone()));
     status::Accepted(Some(format!("{}", task_context_uuid)))
 }
 
-async fn process(run_config: RunConfig, task_context_uuid: Uuid) {
+async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_channel: Sender<Command>) {
     let num_cpus = num_cpus::get();
-    let tx = PageLoaderService::init();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
 
-    let _send_result = tx.send(CrawlDomainCommand { url: run_config.url.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
+    let _send_result = page_loader_tx_channel.send(CrawlDomainCommand { url: run_config.url.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
     let connector = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(connector);
 

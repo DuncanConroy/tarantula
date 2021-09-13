@@ -18,12 +18,15 @@ members = [
 [dependencies]
 # internal
 page_loader = { path = "page_loader" }
+responses = { path = "responses" }
 server = { path = "server" }
 # external
 clap = { version = "2.33", features = ["yaml"] }
-num_cpus = "1.13.0"
+hyper = { version = "^0.14.11", features = ["full"] }
+hyper-tls = "^0.5.0"
 log = "0.4.14"
 log4rs = "1.0.0"
+num_cpus = "1.13.0"
 rocket = "0.5.0-rc.1"
 tokio = { version = "^1", features = ["full"] }
 

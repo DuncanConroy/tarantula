@@ -3,6 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use log::debug;
+
 use crate::events::crawler_event::CrawlerEvent;
 use crate::task_context::task_context::TaskContext;
 
@@ -21,8 +23,9 @@ pub struct DefaultTaskManager {
 
 impl TaskManager for DefaultTaskManager {
     fn add_task(&mut self, task: Arc<Mutex<dyn TaskContext>>) {
-        let task_clone = task.clone();
-        self.tasks.lock().unwrap().insert(task_clone.lock().unwrap().get_url(), task_clone.clone());
+        let key = task.lock().unwrap().get_uuid_clone().to_string();
+        debug!("Strong pointers to task {} before insert: {}", &key, Arc::strong_count(&task));
+        self.tasks.lock().unwrap().insert(key.clone(), task);
     }
 
     fn init(gc_timeout_ms: u64) -> Arc<Mutex<Self>> {
@@ -56,14 +59,21 @@ impl DefaultTaskManager {
     }
 
     fn do_garbage_collection(&mut self) {
-        for (_, value) in self.tasks.lock().unwrap().iter() {
+        let mut to_gc = vec![];
+        for (key, value) in self.tasks.lock().unwrap().iter() {
             if value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) {
                 let uuid = value.lock().unwrap().get_uuid_clone();
-                 value.lock().unwrap().get_response_channel().blocking_send(CrawlerEvent::CompleteEvent { uuid }).unwrap();
+                value.lock().unwrap().get_response_channel().blocking_send(CrawlerEvent::CompleteEvent { uuid }).unwrap();
+                to_gc.push(key.clone());
             }
         }
 
-        self.tasks.lock().unwrap().retain(|_, value|  !value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms))
+        to_gc.iter().for_each(|key|
+            debug!("Strong pointers to task {} before gc: {}",
+                key,
+                Arc::strong_count(&self.tasks.lock().unwrap()[key])
+            ));
+        self.tasks.lock().unwrap().retain(|key, _| !to_gc.contains(key));
     }
 }
 
@@ -133,9 +143,12 @@ mod tests {
     async fn added_task_context_does_not_get_garbage_collected_within_timeout() {
         // given
         let mut mock_task_context = MockMyTaskContext::new();
+        let expected_uuid = Uuid::new_v4();
         mock_task_context.expect_can_be_garbage_collected().returning(|#[allow(unused_variables)] // allowing dead code, as we don't use gc_timeout_ms
                                                                        gc_timeout_ms: u64| false);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
+        mock_task_context.expect_get_uuid_clone().return_const(expected_uuid);
+
         let task_context = Arc::new(Mutex::new(mock_task_context));
         let gc_timeout_ms = 100u64;
         let task_manager = DefaultTaskManager::init(gc_timeout_ms);
