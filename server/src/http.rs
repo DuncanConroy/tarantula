@@ -43,12 +43,14 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
                     info!(". -> {}", responses);
 
                     payload = page_response_json;
+                    drop(page_response);
                     do_break = false;
                 }
                 CrawlerEvent::CompleteEvent { uuid } => {
                     let complete_response = CompleteResponse { uuid };
                     info!("Received from threads - CompleteEvent: {:?}", complete_response);
                     payload = rocket::serde::json::serde_json::to_string(&complete_response).unwrap();
+                    drop(complete_response);
                     do_break = true;
                 }
             }
@@ -69,7 +71,7 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
 
     manager.await.unwrap();
 
-    info!("Finished.");
+    info!("Finished crawl.");
 }
 
 // use rocket_contrib::json::{Json, JsonError};
