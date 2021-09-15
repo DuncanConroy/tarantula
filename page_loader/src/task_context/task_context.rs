@@ -47,7 +47,6 @@ pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + Robo
 pub struct DefaultTaskContext {
     task_config: Arc<Mutex<TaskConfig>>,
     dom_parser: Arc<dyn DomParser>,
-    link_type_checker: Arc<LinkTypeChecker>,
     uri_service: Arc<UriService>,
     robots_service: Arc<dyn RobotsTxt>,
     http_client: Arc<dyn HttpClient>,
@@ -73,7 +72,6 @@ impl TaskContextInit for DefaultTaskContext {
         DefaultTaskContext {
             task_config,
             dom_parser,
-            link_type_checker,
             uri_service,
             robots_service,
             http_client,
