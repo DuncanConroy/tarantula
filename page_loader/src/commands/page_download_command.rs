@@ -53,6 +53,7 @@ mod tests {
 
     use dom_parser::DomParser;
     use linkresult::uri_service::UriService;
+    use responses::run_config::RunConfig;
 
     use crate::events::crawler_event::CrawlerEvent;
     use crate::task_context::robots_service::RobotsTxt;
@@ -99,7 +100,7 @@ mod tests {
         // given: simple download command
         let command = DefaultPageDownloadCommand {};
         let mut mock_task_context = MockMyTaskContext::new();
-        let task_config = TaskConfig::new("https://example.com".into());
+        let task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_get().returning(|_| Ok(Response::builder()

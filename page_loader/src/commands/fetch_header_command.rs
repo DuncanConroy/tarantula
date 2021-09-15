@@ -34,7 +34,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let mut num_redirects = 0;
         if redirects.is_some() {
             let redirects_unwrapped = redirects.as_ref().unwrap();
-            num_redirects = redirects_unwrapped.len() as u16;
+            num_redirects = redirects_unwrapped.len() as u8;
             uri = redirects_unwrapped.last().unwrap().destination.clone();
         }
 
@@ -96,6 +96,7 @@ mod tests {
     use dom_parser::DomParser;
     use linkresult::LinkTypeChecker;
     use linkresult::uri_service::UriService;
+    use responses::run_config::RunConfig;
 
     use crate::events::crawler_event::CrawlerEvent;
     use crate::task_context::robots_service::RobotsTxt;
@@ -142,7 +143,7 @@ mod tests {
         // given: simple fetch command
         let command = DefaultFetchHeaderCommand {};
         let mut mock_task_context = MockMyTaskContext::new();
-        let task_config = TaskConfig::new("https://example.com".into());
+        let task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let page_request = PageRequest::new("https://example.com".into(), "/".into(), None, Arc::new(Mutex::new(mock_task_context)));
         let mut mock_http_client = MockMyHttpClient::new();
@@ -172,7 +173,7 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new("example.com"))));
         mock_task_context.expect_get_uri_service().return_const(uri_service.clone());
-        let mut task_config = TaskConfig::new("https://example.com".into());
+        let mut task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
         task_config.maximum_redirects = 2;
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let mut mock_http_client = MockMyHttpClient::new();

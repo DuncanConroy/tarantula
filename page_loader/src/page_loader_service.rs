@@ -11,6 +11,7 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 use responses::page_response::PageResponse;
+use responses::run_config::RunConfig;
 use responses::uri_scope::UriScope;
 
 use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
@@ -54,7 +55,7 @@ impl PageLoaderService {
     fn new() -> PageLoaderService {
         PageLoaderService {
             mpsc_sender: None,
-            task_manager: Box::new(DefaultTaskManager::init(10_000)),
+            task_manager: Box::new(DefaultTaskManager::init(60_000)),
         }
     }
 
@@ -86,11 +87,11 @@ impl PageLoaderService {
                             do_load(response_channel, page_crawl_command, tx_task).await
                         });// Don't await here. Otherwise all processes might hang indefinitely
                     }
-                    Command::CrawlDomainCommand { url, response_channel, task_context_uuid, .. } => {
-                        debug!("received CrawlDomainCommand with url: {} and uuid: {} on thread {:?}", url, task_context_uuid, thread::current().name());
-                        let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(url.clone(), task_context_uuid, response_channel.clone())));
-                        arc_page_loader_service_clone.task_manager.lock().unwrap().add_task(task_context.clone());
-                        tx_clone.send(LoadPageCommand { url: url.clone(), raw_url: url, response_channel, task_context: task_context.clone(), current_depth: 0 }).await.expect("Problem with spawned worker thread for CrawlDomainCommand");
+                    Command::CrawlDomainCommand { run_config, response_channel, task_context_uuid, .. } => {
+                        debug!("received CrawlDomainCommand with run_config: {:?} and uuid: {} on thread {:?}", run_config, task_context_uuid, thread::current().name());
+                        let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(run_config.clone(), task_context_uuid, response_channel.clone())));
+                        tx_clone.send(LoadPageCommand { url: run_config.url.clone(), raw_url: run_config.url.clone(), response_channel, task_context: task_context.clone(), current_depth: 0 }).await.expect("Problem with spawned worker thread for CrawlDomainCommand");
+                        arc_page_loader_service_clone.task_manager.lock().unwrap().add_task(task_context);
                     }
                 }
             }
@@ -178,7 +179,7 @@ pub enum Command {
         current_depth: u16,
     },
     CrawlDomainCommand {
-        url: String,
+        run_config: RunConfig,
         response_channel: mpsc::Sender<CrawlerEvent>,
         task_context_uuid: Uuid,
         last_crawled_timestamp: u64,
@@ -195,8 +196,8 @@ impl fmt::Debug for Command {
                 .field("current_depth", &current_depth)
                 .finish(),
             #[allow(unused_variables)] // allowing, as this is the signature
-            Command::CrawlDomainCommand { url, response_channel, task_context_uuid, last_crawled_timestamp } => f.debug_struct("CrawlDomainCommand")
-                .field("url", &url)
+            Command::CrawlDomainCommand { run_config, response_channel, task_context_uuid, last_crawled_timestamp } => f.debug_struct("CrawlDomainCommand")
+                .field("run_config", &run_config)
                 .field("task_context_uuid", &task_context_uuid)
                 .field("last_crawled_timestamp", &last_crawled_timestamp)
                 .finish(),
@@ -289,7 +290,7 @@ mod tests {
     }
 
     fn create_default_task_context(response_channel: Sender<CrawlerEvent>) -> Arc<Mutex<DefaultTaskContext>> {
-        Arc::new(Mutex::new(DefaultTaskContext::init(String::from("https://example.com"), Uuid::new_v4(), response_channel)))
+        Arc::new(Mutex::new(DefaultTaskContext::init(RunConfig::new(String::from("https://example.com"), None), Uuid::new_v4(), response_channel)))
     }
 
     #[tokio::test]
@@ -303,7 +304,7 @@ mod tests {
 
         // when
         // NOTE: use "/inner" in the url to trick the StubPageCrawlCommand
-        let send_result = tx.send(CrawlDomainCommand { url: String::from("https://example.com/inner"), response_channel: resp_tx.clone(), task_context_uuid: Uuid::new_v4(), last_crawled_timestamp: 0 }).await;
+        let send_result = tx.send(CrawlDomainCommand { run_config: RunConfig::new(String::from("https://example.com/inner"), None), response_channel: resp_tx.clone(), task_context_uuid: Uuid::new_v4(), last_crawled_timestamp: 0 }).await;
 
         // then
         assert_eq!(true, send_result.is_ok());

@@ -4,7 +4,7 @@ use hyper::{Body, Client, Request};
 use hyper_tls::HttpsConnector;
 use rocket::{State, tokio};
 use rocket::response::status;
-use rocket::serde::{Deserialize, json::Json};
+use rocket::serde::json::Json;
 use rocket::tokio::sync::mpsc;
 use rocket::tokio::sync::mpsc::Sender;
 use uuid::Uuid;
@@ -13,33 +13,7 @@ use page_loader::events::crawler_event::CrawlerEvent;
 use page_loader::page_loader_service::Command;
 use page_loader::page_loader_service::Command::CrawlDomainCommand;
 use responses::complete_response::CompleteResponse;
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct RunConfig {
-    pub url: String,
-    pub ignore_redirects: Option<bool>,
-    pub maximum_redirects: Option<u8>,
-    pub maximum_depth: Option<u8>,
-    pub ignore_robots_txt: Option<bool>,
-    pub keep_html_in_memory: Option<bool>,
-    pub user_agent: Option<String>,
-    pub callback_url: Option<String>,
-}
-
-impl RunConfig {
-    pub fn new(url: String, callback_url: Option<String>) -> RunConfig {
-        RunConfig {
-            url,
-            ignore_redirects: Some(false),
-            maximum_redirects: Some(10),
-            maximum_depth: Some(16),
-            ignore_robots_txt: Some(false),
-            keep_html_in_memory: Some(false),
-            user_agent: Some(String::from("tarantula")),
-            callback_url,
-        }
-    }
-}
+use responses::run_config::RunConfig;
 
 #[put("/crawl", data = "<run_config>")]
 pub fn crawl(run_config: Json<RunConfig>, page_loader_tx_channel: &State<Sender<Command>>) -> status::Accepted<String> {
@@ -52,7 +26,7 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
     let num_cpus = num_cpus::get();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
 
-    let _send_result = page_loader_tx_channel.send(CrawlDomainCommand { url: run_config.url.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
+    let _send_result = page_loader_tx_channel.send(CrawlDomainCommand { run_config: run_config.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
     let connector = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(connector);
 

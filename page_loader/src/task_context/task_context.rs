@@ -10,13 +10,14 @@ use uuid::Uuid;
 use dom_parser::{DomParser, DomParserService};
 use linkresult::LinkTypeChecker;
 use linkresult::uri_service::UriService;
+use responses::run_config::RunConfig;
 
 use crate::events::crawler_event::CrawlerEvent;
 use crate::http::http_client::{HttpClient, HttpClientImpl};
 use crate::task_context::robots_service::{RobotsService, RobotsTxt};
 
 pub trait TaskContextInit {
-    fn init(uri: String, uuid: Uuid, response_channel: Sender<CrawlerEvent>) -> Self;
+    fn init(run_config: RunConfig, uuid: Uuid, response_channel: Sender<CrawlerEvent>) -> Self;
 }
 
 pub trait TaskContext: Sync + Send {
@@ -57,9 +58,9 @@ pub struct DefaultTaskContext {
 }
 
 impl TaskContextInit for DefaultTaskContext {
-    fn init(uri: String, uuid: Uuid, response_channel: Sender<CrawlerEvent>) -> DefaultTaskContext {
-        let hyper_uri = uri.parse::<hyper::Uri>().unwrap();
-        let task_config = Arc::new(Mutex::new(TaskConfig::new(uri)));
+    fn init(run_config: RunConfig, uuid: Uuid, response_channel: Sender<CrawlerEvent>) -> DefaultTaskContext {
+        let hyper_uri = run_config.url.parse::<hyper::Uri>().unwrap();
+        let task_config = Arc::new(Mutex::new(TaskConfig::new(run_config)));
         let user_agent = task_config.lock().unwrap().user_agent.clone();
         let crawl_delay_ms = task_config.lock().unwrap().crawl_delay_ms.clone();
         let link_type_checker = Arc::new(LinkTypeChecker::new(hyper_uri.host().unwrap()));
@@ -102,7 +103,7 @@ impl TaskContext for DefaultTaskContext {
     }
 
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool {
-        return if Instant::now() - self.last_command_received > Duration::from_millis(gc_timeout_ms) {
+        return if Instant::now() - self.last_command_received > Duration::from_millis(self.task_config.lock().unwrap().crawl_delay_ms as u64 + gc_timeout_ms) {
             true
         } else {
             false
@@ -144,7 +145,7 @@ impl FullTaskContext for DefaultTaskContext {}
 pub struct TaskConfig {
     pub uri: Uri,
     pub ignore_redirects: bool,
-    pub maximum_redirects: u16,
+    pub maximum_redirects: u8,
     pub maximum_depth: u16,
     pub ignore_robots_txt: bool,
     pub keep_html_in_memory: bool,
@@ -153,16 +154,16 @@ pub struct TaskConfig {
 }
 
 impl TaskConfig {
-    pub fn new(uri: String) -> TaskConfig {
+    pub fn new(run_config: RunConfig) -> TaskConfig {
         TaskConfig {
-            uri: uri.parse::<hyper::Uri>().unwrap(),
-            ignore_redirects: false,
-            maximum_redirects: 10,
-            maximum_depth: 16,
-            ignore_robots_txt: false,
-            keep_html_in_memory: false,
-            user_agent: String::from("tarantula"),
-            crawl_delay_ms: 1_000,
+            uri: run_config.url.parse::<hyper::Uri>().unwrap(),
+            ignore_redirects: run_config.ignore_redirects.unwrap_or_else(|| false),
+            maximum_redirects: run_config.maximum_redirects.unwrap_or_else(|| 10),
+            maximum_depth: run_config.maximum_depth.unwrap_or_else(|| 16),
+            ignore_robots_txt: run_config.ignore_robots_txt.unwrap_or_else(|| false),
+            keep_html_in_memory: run_config.keep_html_in_memory.unwrap_or_else(|| false),
+            user_agent: run_config.user_agent.unwrap_or_else(|| String::from("tarantula")),
+            crawl_delay_ms: run_config.crawl_delay_ms.unwrap_or_else(|| 10_000),
         }
     }
 }
@@ -180,7 +181,7 @@ mod tests {
         // given: a usual task context
         let gc_timeout_ms = 10;
         let (resp_tx, _) = mpsc::channel(2);
-        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4(), resp_tx);
+        let context = DefaultTaskContext::init(RunConfig::new("https://example.com".into(), None), Uuid::new_v4(), resp_tx);
 
         // when: can_be_garbage_collected is invoked
         let result = context.can_be_garbage_collected(gc_timeout_ms);
@@ -193,7 +194,26 @@ mod tests {
     async fn can_be_garbage_collected_true_on_timeout() {
         // given: a usual task context
         let (resp_tx, _) = mpsc::channel(2);
-        let context = DefaultTaskContext::init("https://example.com".into(), Uuid::new_v4(), resp_tx);
+        let mut run_config = RunConfig::new("https://example.com".into(), None);
+        run_config.crawl_delay_ms = Some(20);
+        let context = DefaultTaskContext::init(run_config.clone(), Uuid::new_v4(), resp_tx);
+        let gc_timeout_ms = 10u64;
+
+        // when: can_be_garbage_collected is invoked after crawl_delay_ms + gc_timeout_ms * 2
+        thread::sleep(Duration::from_millis(run_config.crawl_delay_ms.unwrap() as u64 + gc_timeout_ms * 2u64));
+        let result = context.can_be_garbage_collected(gc_timeout_ms);
+
+        // then: expect true
+        assert_eq!(result, true, "TaskContext should be garbage collectable at this point");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn can_be_garbage_collected_false_if_diff_lower_than_crawl_delay_ms() {
+        // given: a usual task context
+        let (resp_tx, _) = mpsc::channel(2);
+        let mut run_config = RunConfig::new("https://example.com".into(), None);
+        run_config.crawl_delay_ms = Some(40);
+        let context = DefaultTaskContext::init(run_config, Uuid::new_v4(), resp_tx);
         let gc_timeout_ms = 10u64;
 
         // when: can_be_garbage_collected is invoked after gc_timeout_ms * 2
@@ -201,6 +221,6 @@ mod tests {
         let result = context.can_be_garbage_collected(gc_timeout_ms);
 
         // then: expect true
-        assert_eq!(result, true, "TaskContext should be garbage collectable at this point");
+        assert_eq!(result, false, "TaskContext should not be garbage collectable at this point");
     }
 }
