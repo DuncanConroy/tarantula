@@ -7,7 +7,6 @@ use log::trace;
 
 use responses::get_response::GetResponse;
 use responses::response_timings::ResponseTimings;
-use responses::status_code::StatusCode;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;

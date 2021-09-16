@@ -4,7 +4,7 @@ use std::cmp::max;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
 
-use log::debug;
+use log::{debug, error, info};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -84,7 +84,7 @@ impl PageLoaderService {
                         let local_command_factory = arc_command_factory.clone();
                         tokio::spawn(async move {
                             let page_crawl_command = local_command_factory.create_page_crawl_command(url, raw_url, task_context, current_depth);
-                            do_load(response_channel, page_crawl_command, tx_task).await
+                            do_load(response_channel, page_crawl_command, tx_task).await;
                         });// Don't await here. Otherwise all processes might hang indefinitely
                     }
                     Command::CrawlDomainCommand { run_config, response_channel, task_context_uuid, .. } => {
@@ -113,9 +113,10 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
     let page_response = page_crawl_command.crawl(http_client, task_context_uuid).await;
     if let Ok(page_response_result) = page_response {
         if let Some(crawl_result) = page_response_result {
-            add_links_to_known_list(&page_crawl_command, &crawl_result);
-            let links = crawl_result.borrow().links.clone();
             let task_context = page_crawl_command.get_task_context();
+            add_links_to_known_list(&mut page_crawl_command.get_task_context().lock().unwrap()
+                .get_all_known_links().lock().unwrap(), &crawl_result);
+            let links = crawl_result.borrow().links.clone();
             if links.is_some() {
                 let mut links_deduped = links.unwrap();
                 links_deduped.dedup_by(|a, b| a.uri.eq(&b.uri));
@@ -133,11 +134,10 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
                             drop(request);
                             let url = task_context.lock().unwrap().get_uri_service().form_full_url(
                                 &protocol,
-                                &String::from(link.uri.clone()),
+                                &link.uri,
                                 &host,
                                 &Some(page_crawl_command.get_url_clone()),
                             ).to_string();
-
 
                             let resp = response_channel.clone();
                             let load_page_command = LoadPageCommand { url: url.clone(), raw_url: link.uri.clone(), response_channel: resp, task_context: task_context.clone(), current_depth: page_crawl_command.get_current_depth() + 1 };
@@ -147,25 +147,28 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
                     }
                 }
             }
-            response_channel.send(PageEvent { page_response: crawl_result }).await.unwrap_or_else(|x| std::process::exit(1));//expect("Could not send result to response channel");
+            drop(task_context);
+            response_channel.send(PageEvent { page_response: crawl_result }).await.expect("Could not send result to response channel")
         } else {
             // todo: send some response to response channel - we got nothing here :)
             // todo!("Proper error handling");
+            info!("no crawl result");
+            // is this even an error or just because of robots.txt or other stuff?
         }
     } else {
-        todo!("Proper error handling is required!");
+        // todo!("Proper error handling is required!");
+        error!("No page response from http call");
     }
 }
 
-fn add_links_to_known_list(page_crawl_command: &Box<dyn CrawlCommand>, crawl_result: &PageResponse) {
-    // TODO: refactor to not use internals of page crawl command. use function on crawl command instead - decoupling
-    page_crawl_command.get_task_context().lock().unwrap()
-        .get_all_known_links().lock().unwrap()
-        .push(crawl_result.original_requested_url.clone());
+fn add_links_to_known_list(all_known_links: &mut Vec<String>, crawl_result: &PageResponse) {
+    if !all_known_links.contains(&crawl_result.original_requested_url) {
+        all_known_links.push(crawl_result.original_requested_url.clone());
+    }
     if let Some(final_url) = &crawl_result.final_url_after_redirects {
-        page_crawl_command.get_task_context().lock().unwrap()
-            .get_all_known_links().lock().unwrap()
-            .push(final_url.clone());
+        if !all_known_links.contains(&final_url) {
+            all_known_links.push(final_url.clone());
+        }
     }
 }
 
