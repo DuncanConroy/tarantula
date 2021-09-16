@@ -22,7 +22,9 @@ pub trait FetchHeaderCommand: Sync + Send {
     async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
 }
 
-pub struct DefaultFetchHeaderCommand {}
+pub struct DefaultFetchHeaderCommand {
+    unofficial_codes: HashMap<u16, String>,
+}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
@@ -54,7 +56,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let redirects_result = redirects.unwrap_or(vec![]);
         let result = HeadResponse {
             redirects: redirects_result,
-            http_response_code: StatusCode { code: response.status().as_u16(), label: response.status().canonical_reason().unwrap().into() },
+            http_response_code: self.map_status_code(response.status()),
             headers,
             requested_url: uri.clone(),
             response_timings: ResponseTimings::from(format!("HeadResponse.{}", uri.clone()), start_time, DateTime::from(Utc::now())),
@@ -64,6 +66,21 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
 }
 
 impl DefaultFetchHeaderCommand {
+    pub fn new() -> DefaultFetchHeaderCommand {
+        let mut hash_map: HashMap<u16, String> = HashMap::new();
+        hash_map.insert(520u16, String::from("[CLOUDFLARE] Web Server Returned an Unknown Error"));
+        hash_map.insert(521u16, String::from("[CLOUDFLARE] Web Server Is Down"));
+        hash_map.insert(522u16, String::from("[CLOUDFLARE] Connection Timed Out"));
+        hash_map.insert(523u16, String::from("[CLOUDFLARE] Origin Is Unreachable"));
+        hash_map.insert(524u16, String::from("[CLOUDFLARE] A Timeout Occurred"));
+        hash_map.insert(525u16, String::from("[CLOUDFLARE] SSL Handshake Failed"));
+        hash_map.insert(526u16, String::from("[CLOUDFLARE] Invalid SSL Certificate"));
+        hash_map.insert(527u16, String::from("[CLOUDFLARE] Railgun Error"));
+        DefaultFetchHeaderCommand {
+            unofficial_codes: hash_map
+        }
+    }
+
     fn append_redirect(page_request: &Arc<Mutex<PageRequest>>, redirects: Option<Vec<Redirect>>, uri: String, response: &Response<Body>, headers: &HashMap<String, String>, location_header: &HeaderValue, redirect_start_time: DateTime<Utc>) -> Vec<Redirect> {
         let uri_service = page_request.lock().unwrap().task_context.lock().unwrap().get_uri_service();
         let uri_object = Uri::from_str(&uri).unwrap();
@@ -82,6 +99,19 @@ impl DefaultFetchHeaderCommand {
         }
         redirects_for_next.push(redirect);
         redirects_for_next
+    }
+
+    fn map_status_code(&self, status: hyper::StatusCode) -> StatusCode {
+        let code = status.as_u16();
+        StatusCode {
+            code,
+            label: if let Some(reason) = status.canonical_reason() {
+                reason.into()
+            } else {
+                self.unofficial_codes.get(&code)
+                    .unwrap_or(&String::from("Unknown Status Code")).clone()
+            },
+        }
     }
 }
 
@@ -141,7 +171,7 @@ mod tests {
     #[tokio::test]
     async fn returns_simple_result_on_simple_request_without_redirect_following() {
         // given: simple fetch command
-        let command = DefaultFetchHeaderCommand {};
+        let command = DefaultFetchHeaderCommand::new();
         let mut mock_task_context = MockMyTaskContext::new();
         let task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
@@ -169,7 +199,7 @@ mod tests {
     #[tokio::test]
     async fn should_return_redirect_list_up_to_max_redirects() {
         // given: simple fetch command
-        let command = DefaultFetchHeaderCommand {};
+        let command = DefaultFetchHeaderCommand::new();
         let mut mock_task_context = MockMyTaskContext::new();
         let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new("example.com"))));
         mock_task_context.expect_get_uri_service().return_const(uri_service.clone());
