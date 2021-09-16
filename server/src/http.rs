@@ -55,7 +55,7 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
                 }
             }
 
-            if let Some(callback_url) = run_config.callback_url.clone() {
+            if let Some(callback_url) = run_config.callback_url.as_ref() {
                 let req = Request::builder()
                     .header("user-agent", run_config.user_agent.as_ref().unwrap().clone())
                     .method("POST")

@@ -41,7 +41,7 @@ impl CommandFactory for PageCrawlCommandFactory {
                                        raw_url,
                                        task_context,
                                        current_depth,
-                                       Box::new(DefaultFetchHeaderCommand::new()),
+                                       Box::new(DefaultFetchHeaderCommand {}),
                                        Box::new(DefaultPageDownloadCommand {})))
     }
 }
@@ -147,8 +147,7 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
                     }
                 }
             }
-            response_channel.send(PageEvent { page_response: crawl_result }).await.expect("Could not send result to response channel");
-            // response_channel.send(PageEvent { page_response: crawl_result }).await.unwrap_or_else(|x|std::process::exit(1));//expect("Could not send result to response channel");
+            response_channel.send(PageEvent { page_response: crawl_result }).await.unwrap_or_else(|x| std::process::exit(1));//expect("Could not send result to response channel");
         } else {
             // todo: send some response to response channel - we got nothing here :)
             // todo!("Proper error handling");

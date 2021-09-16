@@ -27,7 +27,7 @@ impl PageDownloadCommand for DefaultPageDownloadCommand {
         let response = http_client.get(uri.clone()).await.unwrap();
         trace!("GET for {}: {:?}", uri, response.headers());
         let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
-        let http_response_code = StatusCode { code: response.status().as_u16(), label: response.status().canonical_reason().unwrap().into() };
+        let http_response_code = http_utils::map_status_code(response.status());
         let body: String = String::from_utf8_lossy(hyper::body::to_bytes(response.into_body()).await.unwrap().as_ref())
             .to_string();
         let result = GetResponse {
