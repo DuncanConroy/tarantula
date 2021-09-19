@@ -12,7 +12,7 @@ responses = { path = "../responses" }
 # external
 hyper = { version = "0.14.11", features = ["full"] }
 hyper-tls = "0.5.0"
-num_cpus = "1.13.0"
+num_cpus = "^1.13.0"
 rocket = { version = "0.5.0-rc.1", features = ["json", "secrets", "tls"] }
 serde = "1.0.128"
 uuid = { version = "0.8.2", features = ["serde", "v4"] }

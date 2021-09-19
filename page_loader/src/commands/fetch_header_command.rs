@@ -44,7 +44,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         if num_redirects < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
                 let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(&page_request, redirects, uri, &response, &headers, location_header, start_time);
-                let response = self.fetch_header(page_request.clone(), http_client, Some(redirects_for_next)).await;
+                let response = self.fetch_header(page_request.clone(), http_client.clone(), Some(redirects_for_next)).await;
                 return response;
             }
             let error_message = format!("No valid location found in redirect header {:?}", response);
@@ -133,8 +133,8 @@ mod tests {
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
-            async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
-            async fn get(&self, uri: String) -> std::result::Result<Response<Body>, String>;
+            async fn head(&self, uri: String) -> hyper::Result<Response<Body>>;
+            async fn get(&self, uri: String) -> hyper::Result<Response<Body>>;
         }
     }
 
