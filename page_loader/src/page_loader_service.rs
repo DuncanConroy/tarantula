@@ -147,7 +147,6 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
                     }
                 }
             }
-            drop(task_context);
             response_channel.send(PageEvent { page_response: crawl_result }).await.expect("Could not send result to response channel")
         } else {
             // todo: send some response to response channel - we got nothing here :)
@@ -159,6 +158,10 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
         // todo!("Proper error handling is required!");
         error!("No page response from http call");
     }
+
+    // dropping of these channels cannot be tested. therefore take double care with them!
+    drop(tx);
+    drop(response_channel);
 }
 
 fn add_links_to_known_list(all_known_links: &mut Vec<String>, crawl_result: &PageResponse) {

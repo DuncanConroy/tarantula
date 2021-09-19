@@ -1,9 +1,9 @@
 use std::ops::{AddAssign, Sub};
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use hyper::{Body, Client, Response, Request};
+use hyper::{Body, Client, Request, Response};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
 use log::debug;
@@ -11,8 +11,8 @@ use rand::random;
 
 #[async_trait]
 pub trait HttpClient: Sync + Send {
-    async fn head(&self, uri: String) -> Result<Response<Body>, String>;
-    async fn get(&self, uri: String) -> Result<Response<Body>, String>;
+    async fn head(&self, uri: String) ->hyper::Result<Response<Body>>;
+    async fn get(&self, uri: String) -> hyper::Result<Response<Body>>;
 }
 
 pub struct HttpClientImpl {
@@ -33,7 +33,7 @@ impl HttpClientImpl {
         }
     }
 
-    async fn send_request(&self, method: &str, uri: String) -> Result<Response<Body>, String> {
+    async fn send_request(&self, method: &str, uri: String) -> hyper::Result<Response<Body>> {
         'retry: loop {
             if self.last_request_timestamp.lock().unwrap().elapsed().as_millis() <= self.rate_limiting_ms as u128 {
                 let sleep_duration = (random::<f64>() * self.rate_limiting_ms as f64) as u64 + self.rate_limiting_ms as u64;
@@ -57,26 +57,18 @@ impl HttpClientImpl {
                 .body(Body::from(""))
                 .expect(&format!("{} request builder", method));
 
-            match self.client.request(req).await {
-                Ok(result) => {
-                    return Ok(result);
-                }
-                Err(error_message) => {
-                    debug!("Request unsuccessful. Waiting to retry {}ms. {}", self.rate_limiting_ms, error_message);
-                    tokio::time::sleep(Duration::from_millis(self.rate_limiting_ms as u64 * 10)).await;
-                }
-            }
+            return self.client.request(req).await
         }
     }
 }
 
 #[async_trait]
 impl HttpClient for HttpClientImpl {
-    async fn head(&self, uri: String) -> Result<Response<Body>, String> {
+    async fn head(&self, uri: String) -> hyper::Result<Response<Body>> {
         self.send_request("HEAD", uri).await
     }
 
-    async fn get(&self, uri: String) -> Result<Response<Body>, String> {
+    async fn get(&self, uri: String) -> hyper::Result<Response<Body>> {
         self.send_request("GET", uri).await
     }
 }

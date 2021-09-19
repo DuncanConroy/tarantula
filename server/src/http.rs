@@ -30,6 +30,8 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
     let connector = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(connector);
 
+    drop(_send_result);
+    drop(page_loader_tx_channel);
     let manager = tokio::spawn(async move {
         let mut responses = 0;
         while let Some(event) = resp_rx.recv().await {
@@ -63,10 +65,17 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
                     .body(Body::from(payload))
                     .expect(&format!("POST request builder"));
                 client.request(req).await.expect("Couldn't send request to callback");
-            };
+            } else {
+                drop(payload);
+            }
 
             if do_break { break; }
+            drop(do_break);
         }
+        // dropping of these channels cannot be tested. therefore take double care with them!
+        resp_rx.close();
+        drop(resp_rx);
+        drop(resp_tx);
     });
 
     manager.await.unwrap();

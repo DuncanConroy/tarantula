@@ -217,8 +217,8 @@ mod tests {
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
-            async fn head(&self, uri: String) -> std::result::Result<Response<Body>, String>;
-            async fn get(&self, uri: String) -> std::result::Result<Response<Body>, String>;
+            async fn head(&self, uri: String) -> hyper::Result<Response<Body>>;
+            async fn get(&self, uri: String) -> hyper::Result<Response<Body>>;
         }
     }
     mock! {
