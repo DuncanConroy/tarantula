@@ -34,6 +34,7 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
     drop(page_loader_tx_channel);
     let manager = tokio::spawn(async move {
         let mut responses = 0;
+        let mut callback_url = run_config.callback_url.clone();
         while let Some(event) = resp_rx.recv().await {
             let payload: String;
             let do_break: bool;
@@ -52,16 +53,18 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
                     let complete_response = CompleteResponse { uuid };
                     info!("Received from threads - CompleteEvent: {:?}", complete_response);
                     payload = rocket::serde::json::serde_json::to_string(&complete_response).unwrap();
+                    callback_url = run_config.callback_url_finished.clone();
+
                     drop(complete_response);
                     do_break = true;
                 }
             }
 
-            if let Some(callback_url) = run_config.callback_url.as_ref() {
+            if let Some(callback_url_unwrapped) = callback_url.as_ref() {
                 let req = Request::builder()
                     .header("user-agent", run_config.user_agent.as_ref().unwrap().clone())
                     .method("POST")
-                    .uri(callback_url)
+                    .uri(callback_url_unwrapped)
                     .body(Body::from(payload))
                     .expect(&format!("POST request builder"));
                 client.request(req).await.expect("Couldn't send request to callback");

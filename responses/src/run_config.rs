@@ -10,6 +10,7 @@ pub struct RunConfig {
     pub keep_html_in_memory: Option<bool>,
     pub user_agent: Option<String>,
     pub callback_url: Option<String>,
+    pub callback_url_finished: Option<String>,
     pub crawl_delay_ms: Option<usize>,
 }
 
@@ -24,6 +25,7 @@ impl RunConfig {
             keep_html_in_memory: Some(false),
             user_agent: Some(String::from("tarantula")),
             callback_url,
+            callback_url_finished: None,
             crawl_delay_ms: Some(10_000),
         }
     }
