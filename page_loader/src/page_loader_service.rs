@@ -47,14 +47,12 @@ impl CommandFactory for PageCrawlCommandFactory {
 }
 
 pub struct PageLoaderService {
-    mpsc_sender: Option<Sender<Command>>,
     task_manager: Box<Arc<Mutex<dyn TaskManager>>>,
 }
 
 impl PageLoaderService {
     fn new() -> PageLoaderService {
         PageLoaderService {
-            mpsc_sender: None,
             task_manager: Box::new(DefaultTaskManager::init(60_000)),
         }
     }
@@ -64,18 +62,14 @@ impl PageLoaderService {
     }
 
     pub fn init_with_factory(page_crawl_command_factory: Box<dyn CommandFactory>) -> Sender<Command> {
-        let buffer_size = max(num_cpus::get() / 2, 2);
+        let buffer_size = max((num_cpus::get() / 2) * 10, 2);
         let (tx, mut rx) = mpsc::channel(buffer_size);
         let tx_clone = tx.clone();
 
-        let mut page_loader_service = PageLoaderService::new();
-        page_loader_service.mpsc_sender = Some(tx);
-        let arc_page_loader_service = Arc::new(page_loader_service);
-        let arc_page_loader_service_clone = arc_page_loader_service.clone();
+        tokio::spawn(async move {
+            let page_loader_service = PageLoaderService::new();
 
-        let arc_command_factory = Arc::new(page_crawl_command_factory);
-
-        let _manager = tokio::spawn(async move {
+            let arc_command_factory = Arc::new(page_crawl_command_factory);
             while let Some(event) = rx.recv().await {
                 match event {
                     Command::LoadPageCommand { url, raw_url, response_channel, task_context, current_depth } => {
@@ -89,16 +83,17 @@ impl PageLoaderService {
                     }
                     Command::CrawlDomainCommand { run_config, response_channel, task_context_uuid, .. } => {
                         debug!("received CrawlDomainCommand with run_config: {:?} and uuid: {} on thread {:?}", run_config, task_context_uuid, thread::current().name());
-                        let task_context = Arc::new(Mutex::new(DefaultTaskContext::init(run_config.clone(), task_context_uuid, response_channel.clone())));
+                        let default_task_context = DefaultTaskContext::init(run_config.clone(), task_context_uuid, response_channel.clone());
+                        let task_context = Arc::new(Mutex::new(default_task_context));
                         tx_clone.send(LoadPageCommand { url: run_config.url.clone(), raw_url: run_config.url.clone(), response_channel, task_context: task_context.clone(), current_depth: 0 }).await.expect("Problem with spawned worker thread for CrawlDomainCommand");
-                        arc_page_loader_service_clone.task_manager.lock().unwrap().add_task(task_context);
+                        page_loader_service.task_manager.lock().unwrap().add_task(task_context);
                     }
                 }
             }
             debug!("End of while loop >>PageLoaderService")
         });
 
-        arc_page_loader_service.mpsc_sender.as_ref().unwrap().clone()
+        tx
     }
 }
 

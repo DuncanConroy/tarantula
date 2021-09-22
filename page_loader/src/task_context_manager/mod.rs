@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use log::debug;
+use log::{debug, error};
 
 use crate::events::crawler_event::CrawlerEvent;
 use crate::task_context::task_context::TaskContext;
@@ -63,7 +63,11 @@ impl DefaultTaskManager {
         for (key, value) in self.tasks.lock().unwrap().iter() {
             if value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) {
                 let uuid = value.lock().unwrap().get_uuid_clone();
-                value.lock().unwrap().get_response_channel().blocking_send(CrawlerEvent::CompleteEvent { uuid }).unwrap();
+                if let Err(error) = value.lock().unwrap()
+                    .get_response_channel()
+                    .blocking_send(CrawlerEvent::CompleteEvent { uuid: uuid.clone() }) {
+                    error!("Error while sending CompleteEvent to channel of task {}, error: {}", uuid, error);
+                }
                 to_gc.push(key.clone());
             }
         }
@@ -102,7 +106,7 @@ mod tests {
             fn get_last_command_received(&self) -> Instant;
             fn set_last_command_received(&mut self, instant: Instant);
             fn can_be_garbage_collected(&self, gc_timeout_ms: u64)-> bool;
-            fn get_response_channel(&self) -> Sender<CrawlerEvent>;
+            fn get_response_channel(&self) -> &Sender<CrawlerEvent>;
         }
     }
 

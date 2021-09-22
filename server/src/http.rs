@@ -25,14 +25,16 @@ pub fn crawl(run_config: Json<RunConfig>, page_loader_tx_channel: &State<Sender<
 async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_channel: Sender<Command>) {
     let num_cpus = num_cpus::get();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
+    if let Ok(_) = page_loader_tx_channel.send(CrawlDomainCommand {
+        run_config: run_config.clone(),
+        task_context_uuid,
+        last_crawled_timestamp: 0,
+        response_channel: resp_tx,
+    }).await {
+        let connector = HttpsConnector::new();
+        let client = Client::builder().build::<_, hyper::Body>(connector);
 
-    let _send_result = page_loader_tx_channel.send(CrawlDomainCommand { run_config: run_config.clone(), task_context_uuid, last_crawled_timestamp: 0, response_channel: resp_tx.clone() }).await;
-    let connector = HttpsConnector::new();
-    let client = Client::builder().build::<_, hyper::Body>(connector);
-
-    drop(_send_result);
-    drop(page_loader_tx_channel);
-    let manager = tokio::spawn(async move {
+        drop(page_loader_tx_channel);
         let mut responses = 0;
         let mut callback_url = run_config.callback_url.clone();
         while let Some(event) = resp_rx.recv().await {
@@ -78,10 +80,9 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
         // dropping of these channels cannot be tested. therefore take double care with them!
         resp_rx.close();
         drop(resp_rx);
-        drop(resp_tx);
-    });
-
-    manager.await.unwrap();
+    } else {
+        panic!("Shit happened");
+    }
 
     info!("Finished crawl.");
 }
