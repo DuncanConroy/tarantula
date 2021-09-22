@@ -4,7 +4,7 @@ use std::cmp::max;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
 
-use log::{debug, error, info};
+use log::{debug, error};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -146,7 +146,7 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
         } else {
             // todo: send some response to response channel - we got nothing here :)
             // todo!("Proper error handling");
-            info!("no crawl result");
+            debug!("no crawl result");
             // is this even an error or just because of robots.txt or other stuff?
         }
     } else {
