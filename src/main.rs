@@ -10,6 +10,10 @@ use log::info;
 use page_loader::page_loader_service::PageLoaderService;
 use server::http::crawl;
 
+// etn-ev.de
+// worldofdinner.de
+
+
 // A simple type alias so as to DRY.
 pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -24,7 +28,7 @@ async fn main() -> DynResult<()> {
 
     let _ = rocket::build()
         .mount("/", routes![crawl])
-        .manage(page_loader_tx_channel.clone())
+        .manage(page_loader_tx_channel)
         .launch()
         .await;
 

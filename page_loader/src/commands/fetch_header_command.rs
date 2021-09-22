@@ -113,7 +113,7 @@ mod tests {
             fn get_last_command_received(&self) -> Instant;
             fn set_last_command_received(&mut self, instant: Instant);
             fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
-            fn get_response_channel(&self) -> Sender<CrawlerEvent>;
+            fn get_response_channel(&self) -> &Sender<CrawlerEvent>;
         }
         impl TaskContextServices for MyTaskContext{
             fn get_uri_service(&self) -> Arc<UriService>;

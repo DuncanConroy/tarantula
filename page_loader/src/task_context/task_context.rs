@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use hyper::Uri;
+use log::debug;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -27,7 +28,7 @@ pub trait TaskContext: Sync + Send {
     fn get_last_command_received(&self) -> Instant;
     fn set_last_command_received(&mut self, instant: Instant);
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
-    fn get_response_channel(&self) -> Sender<CrawlerEvent>;
+    fn get_response_channel(&self) -> &Sender<CrawlerEvent>;
 }
 
 pub trait TaskContextServices: Sync + Send {
@@ -108,8 +109,8 @@ impl TaskContext for DefaultTaskContext {
         };
     }
 
-    fn get_response_channel(&self) -> Sender<CrawlerEvent> {
-        self.response_channel.clone()
+    fn get_response_channel(&self) -> &Sender<CrawlerEvent> {
+        &self.response_channel
     }
 }
 
@@ -138,6 +139,12 @@ impl RobotsTxt for DefaultTaskContext {
 }
 
 impl FullTaskContext for DefaultTaskContext {}
+
+impl Drop for DefaultTaskContext {
+    fn drop(&mut self) {
+        debug!("Drop called");
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct TaskConfig {
