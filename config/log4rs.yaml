@@ -25,6 +25,8 @@ loggers:
     level: info
   html5ever:
     level: info
+  page_loader::http::http_client:
+    level: warn
 
   # Route log events sent to the "app::requests" logger to the "requests" appender,
   # and *not* the normal appenders installed at the root
