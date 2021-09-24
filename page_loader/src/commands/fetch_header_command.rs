@@ -19,14 +19,14 @@ use crate::page_request::PageRequest;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
+    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
         let start_time = DateTime::from(Utc::now());
         let mut uri = page_request.lock().unwrap().url.clone();
         let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
@@ -38,13 +38,13 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
             uri = redirects_unwrapped.last().unwrap().destination.clone();
         }
 
-        let response = http_client.head(uri.clone()).await.unwrap();
+        let response = http_client.head(uri.clone(), robots_txt_info_url.clone()).await.unwrap();
         trace!("HEAD for {}: {:?}", uri, response.headers());
         let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
         if num_redirects < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
                 let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(&page_request, redirects, uri, &response, &headers, location_header, start_time);
-                let response = self.fetch_header(page_request.clone(), http_client.clone(), Some(redirects_for_next)).await;
+                let response = self.fetch_header(page_request.clone(), http_client.clone(), Some(redirects_for_next), robots_txt_info_url.clone()).await;
                 return response;
             }
             let error_message = format!("No valid location found in redirect header {:?}", response);
@@ -133,8 +133,8 @@ mod tests {
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
-            async fn head(&self, uri: String) -> hyper::Result<Response<Body>>;
-            async fn get(&self, uri: String) -> hyper::Result<Response<Body>>;
+            async fn head(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
+            async fn get(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
         }
     }
 
@@ -147,7 +147,7 @@ mod tests {
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let page_request = PageRequest::new("https://example.com".into(), "/".into(), None, Arc::new(Mutex::new(mock_task_context)));
         let mut mock_http_client = MockMyHttpClient::new();
-        mock_http_client.expect_head().returning(|_| Ok(Response::builder()
+        mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
             .unwrap()));
@@ -157,6 +157,7 @@ mod tests {
         let result = command.fetch_header(
             Arc::new(Mutex::new(page_request)),
             mock_http_client,
+            None,
             None,
         ).await;
 
@@ -179,25 +180,25 @@ mod tests {
         let mut mock_http_client = MockMyHttpClient::new();
         let mut sequence = Sequence::new();
         mock_http_client.expect_head()
-            .with(eq(String::from("https://example.com")))
+            .with(eq(String::from("https://example.com")), eq(None))
             .times(1)
             .in_sequence(&mut sequence)
-            .returning(|_| Ok(Response::builder()
+            .returning(|_, _x: Option<String>| Ok(Response::builder()
                 .status(308)
                 .header("location", "https://first-redirect.example.com/")
                 .body(Body::from(""))
                 .unwrap()));
         mock_http_client.expect_head()
-            .with(eq(String::from("https://first-redirect.example.com/")))
+            .with(eq(String::from("https://first-redirect.example.com/")), eq(None))
             .times(1)
             .in_sequence(&mut sequence)
-            .returning(|_| Ok(Response::builder()
+            .returning(|_, _x: Option<String>| Ok(Response::builder()
                 .status(308)
                 .header("location", "https://second-redirect.example.com")
                 .header("x-custom", "Hello World")
                 .body(Body::from(""))
                 .unwrap()));
-        mock_http_client.expect_head().returning(|_| Ok(Response::builder()
+        mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
             .status(200)
             .header("x-custom", "Final destination")
             .body(Body::from(""))
@@ -206,7 +207,7 @@ mod tests {
         let page_request = PageRequest::new("https://example.com".into(), "/".into(), None, Arc::new(Mutex::new(mock_task_context)));
 
         // when: fetch is invoked
-        let result = command.fetch_header(Arc::new(Mutex::new(page_request)), mock_http_client, None).await;
+        let result = command.fetch_header(Arc::new(Mutex::new(page_request)), mock_http_client, None, None).await;
 
         // then: simple response is returned, with maximum_redirects redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");

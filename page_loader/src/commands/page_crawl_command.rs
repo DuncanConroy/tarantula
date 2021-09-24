@@ -21,7 +21,7 @@ use crate::task_context::task_context::FullTaskContext;
 pub trait CrawlCommand: Sync + Send {
     fn get_url_clone(&self) -> String;
     fn get_page_request(&self) -> Arc<Mutex<PageRequest>>;
-    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid) -> Result<Option<PageResponse>, String>;
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String>;
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
 }
@@ -72,12 +72,12 @@ impl PageCrawlCommand {
         true
     }
 
-    async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid) -> Result<Option<PageResponse>, String> {
+    async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String> {
         let request_object_cloned = self.request_object.clone();
         let url = request_object_cloned.lock().unwrap().url.clone();
         let raw_url = request_object_cloned.lock().unwrap().raw_url.clone();
         let mut page_response = PageResponse::new(url, raw_url, task_context_uuid.clone());
-        let fetch_header_response = self.fetch_header_command.fetch_header(request_object_cloned, http_client, None).await;
+        let fetch_header_response = self.fetch_header_command.fetch_header(request_object_cloned, http_client, None, robots_txt_info_url.clone()).await;
         if let Ok(result) = fetch_header_response {
             let http_client = result.1;
             let fetch_header_response = result.0;
@@ -87,7 +87,7 @@ impl PageCrawlCommand {
 
             let headers = &page_response.head.as_ref().unwrap().headers;
             if self.should_download_page(headers, &page_response.head.as_ref().unwrap().http_response_code) {
-                let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client).await;
+                let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client, robots_txt_info_url.clone()).await;
                 if let Ok(download_result) = page_download_response {
                     page_response.get = Some(download_result);
                     if self.is_html(&page_response.get.as_ref().unwrap().headers) {
@@ -140,12 +140,12 @@ impl CrawlCommand for PageCrawlCommand {
 
     fn get_page_request(&self) -> Arc<Mutex<PageRequest>> { self.request_object.clone() }
 
-    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid) -> Result<Option<PageResponse>, String> {
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String> {
         if !self.verify_crawlability() {
             return Ok(None);
         }
 
-        self.perform_crawl_internal(http_client, task_context_uuid).await
+        self.perform_crawl_internal(http_client, task_context_uuid, robots_txt_info_url).await
     }
 
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>> {
@@ -217,8 +217,8 @@ mod tests {
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
-            async fn head(&self, uri: String) -> hyper::Result<Response<Body>>;
-            async fn get(&self, uri: String) -> hyper::Result<Response<Body>>;
+            async fn head(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
+            async fn get(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
         }
     }
     mock! {
@@ -226,7 +226,7 @@ mod tests {
         MyFetchHeaderCommand {}
         #[async_trait]
         impl FetchHeaderCommand for MyFetchHeaderCommand{
-            async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>) -> std::result::Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+            async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> std::result::Result<(HeadResponse, Arc<dyn HttpClient>), String>;
         }
     }
     mock! {
@@ -234,7 +234,7 @@ mod tests {
         MyPageDownloadCommand {}
         #[async_trait]
         impl PageDownloadCommand for MyPageDownloadCommand{
-                async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<GetResponse, String>;
+                async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>, robots_txt_info_url: Option<String>) -> Result<GetResponse, String>;
         }
     }
 
@@ -247,6 +247,7 @@ mod tests {
             ignore_robots_txt: false,
             keep_html_in_memory: false,
             user_agent: "".to_string(),
+            robots_txt_info_url: None,
             crawl_delay_ms: 1,
         }))
     }
@@ -278,7 +279,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect none
         assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl, if max depth reached");
@@ -296,10 +297,10 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         let mut mock_http_client = MockMyHttpClient::new();
-        mock_http_client.expect_head().returning(|_| Ok(Response::builder()
+        mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
             .unwrap()));
@@ -313,7 +314,7 @@ mod tests {
             9000,
             mock_fetch_header_command,
             mock_page_download_command);
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl, if max depth not reached, yet");
@@ -341,7 +342,7 @@ mod tests {
             mock_fetch_header_command,
             mock_page_download_command);
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect none
         assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl, if url is known");
@@ -358,10 +359,10 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         let mut mock_http_client = MockMyHttpClient::new();
-        mock_http_client.expect_head().returning(|_| Ok(Response::builder()
+        mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
             .status(200)
             .body(Body::from(""))
             .unwrap()));
@@ -375,7 +376,7 @@ mod tests {
             1,
             mock_fetch_header_command,
             mock_page_download_command);
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl, if url is unknown");
@@ -405,7 +406,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect none
         assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt");
@@ -422,7 +423,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
         // when: invoked with a regular link
@@ -435,7 +436,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some PageResponse with Teapot status code
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
@@ -455,7 +456,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16(), label: hyper::StatusCode::INTERNAL_SERVER_ERROR.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16(), label: hyper::StatusCode::INTERNAL_SERVER_ERROR.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
         // when: invoked with a regular link
@@ -468,7 +469,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some PageResponse with InternalServerError status code and no body
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
@@ -495,7 +496,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| {
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _| {
             let mut header_response = HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() });
             header_response.headers.insert(CONTENT_TYPE.as_str().into(), "application/json; charset=UTF-8".into());
 
@@ -513,7 +514,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some PageResponse without body
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.is_none(), true, "Should not have get response, if status content-type is not text/html");
@@ -540,7 +541,7 @@ mod tests {
         });
 
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _| {
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _| {
             let mut header_response = HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() });
             header_response.headers.insert(CONTENT_TYPE.as_str().into(), "text/html; charset=UTF-8".into());
             header_response.redirects.push(Redirect::from(
@@ -556,7 +557,7 @@ mod tests {
 
         let mut mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         mock_page_download_command.expect_download_page()
-            .returning(|uri, _| {
+            .returning(|uri, _, _| {
                 if uri == "https://final-redirection.example.com" {
                     let mut download_response = GetResponse::new(uri.clone(), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() });
                     download_response.headers = HashMap::new();
@@ -577,7 +578,7 @@ mod tests {
             mock_page_download_command,
         );
         let mock_http_client = get_mock_http_client();
-        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4()).await;
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some PageResponse with body
         assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.as_ref().unwrap().body.is_some(), true, "Should have body, if status content-type is text/html");

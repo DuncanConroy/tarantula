@@ -13,17 +13,17 @@ use crate::http::http_utils;
 
 #[async_trait]
 pub trait PageDownloadCommand: Sync + Send {
-    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<GetResponse, String>;
+    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>, robots_txt_info_url: Option<String>) -> Result<GetResponse, String>;
 }
 
 pub struct DefaultPageDownloadCommand {}
 
 #[async_trait]
 impl PageDownloadCommand for DefaultPageDownloadCommand {
-    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>) -> Result<GetResponse, String> {
+    async fn download_page(&self, uri: String, http_client: Arc<dyn HttpClient>, robots_txt_info_url: Option<String>) -> Result<GetResponse, String> {
         let start_time = DateTime::from(Utc::now());
 
-        let response = http_client.get(uri.clone()).await.unwrap();
+        let response = http_client.get(uri.clone(), robots_txt_info_url).await.unwrap();
         trace!("GET for {}: {:?}", uri, response.headers());
         let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
         let http_response_code = http_utils::map_status_code(response.status());
@@ -89,8 +89,8 @@ mod tests {
         MyHttpClient {}
         #[async_trait]
         impl HttpClient for MyHttpClient{
-            async fn head(&self, uri: String) -> hyper::Result<Response<Body>>;
-            async fn get(&self, uri: String) -> hyper::Result<Response<Body>>;
+            async fn head(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
+            async fn get(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
         }
     }
 
@@ -102,14 +102,14 @@ mod tests {
         let task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
         mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let mut mock_http_client = MockMyHttpClient::new();
-        mock_http_client.expect_get().returning(|_| Ok(Response::builder()
+        mock_http_client.expect_get().returning(|_, _| Ok(Response::builder()
             .status(200)
             .body(Body::from("Hello World"))
             .unwrap()));
         let mock_http_client = Arc::new(mock_http_client);
 
         // when: fetch is invoked
-        let result = command.download_page("https://example.com".into(), mock_http_client).await;
+        let result = command.download_page("https://example.com".into(), mock_http_client, None).await;
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
