@@ -6,13 +6,13 @@ use async_trait::async_trait;
 use hyper::{Body, Client, Request, Response};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
-use log::{debug, info};
+use log::debug;
 use rand::random;
 
 #[async_trait]
 pub trait HttpClient: Sync + Send {
-    async fn head(&self, uri: String) -> hyper::Result<Response<Body>>;
-    async fn get(&self, uri: String) -> hyper::Result<Response<Body>>;
+    async fn head(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
+    async fn get(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
 }
 
 struct Singularity {
@@ -55,7 +55,7 @@ impl HttpClientImpl {
         }
     }
 
-    async fn send_request(&self, method: &str, uri: String) -> hyper::Result<Response<Body>> {
+    async fn send_request(&self, method: &str, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>> {
         'retry: loop {
             if self.is_blocked() {
                 let sleep_duration = (random::<f64>() * self.rate_limiting_ms as f64) as u64 + self.rate_limiting_ms as u64;
@@ -64,20 +64,25 @@ impl HttpClientImpl {
             } else if self.singularity_lock.lock().unwrap().url.is_none() {
                 self.singularity_lock.lock().unwrap().url.replace(uri.clone());
 
+                let user_agent_string = format!("{}{}", self.user_agent,
+                                                robots_txt_info_url
+                                                    .map_or("".into(),
+                                                            |it| format!(" +{}", it)));
+
                 let req = Request::builder()
-                    .header("user-agent", self.user_agent.clone())
+                    .header("user-agent", user_agent_string)
                     .method(method)
                     .uri(uri.clone())
                     .body(Body::from(""))
                     .expect(&format!("{} request builder", method));
 
-                info!("request {}", uri);
+                debug!("request {}", uri);
                 let result = self.client.request(req).await;
                 let instant = self.last_request_timestamp.lock().unwrap().unwrap();
-                info!("request end {}, last_request_timestamp {:?}", uri,instant);
+                debug!("request end {}, last_request_timestamp {:?}", uri,instant);
                 self.last_request_timestamp.lock().unwrap().replace(Instant::now());
                 let instant = self.last_request_timestamp.lock().unwrap().unwrap();
-                info!("request end {}, last_request_timestamp {:?}", uri,instant);
+                debug!("request end {}, last_request_timestamp {:?}", uri,instant);
 
                 self.singularity_lock.lock().unwrap().url.take();
 
@@ -98,12 +103,12 @@ impl HttpClientImpl {
 
 #[async_trait]
 impl HttpClient for HttpClientImpl {
-    async fn head(&self, uri: String) -> hyper::Result<Response<Body>> {
-        self.send_request("HEAD", uri).await
+    async fn head(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>> {
+        self.send_request("HEAD", uri, robots_txt_info_url).await
     }
 
-    async fn get(&self, uri: String) -> hyper::Result<Response<Body>> {
-        self.send_request("GET", uri).await
+    async fn get(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>> {
+        self.send_request("GET", uri, robots_txt_info_url).await
     }
 }
 
@@ -129,15 +134,15 @@ mod tests {
         // when: client is invoked several times within rate_limiting_ms
         let _ = tokio::join!(
             tokio::spawn(async move {
-                let _ = client_clone_1.send_request("GET", String::from("https://localhost:12345")).await;
+                let _ = client_clone_1.send_request("GET", String::from("https://localhost:12345"), None).await;
                 first_timestamp.lock().unwrap().replace(Instant::now());
             }),
             tokio::spawn(async move {
-                let _ = client_clone_2.send_request("GET", String::from("https://localhost:12345")).await;
+                let _ = client_clone_2.send_request("GET", String::from("https://localhost:12345"), None).await;
                 second_timestamp.lock().unwrap().replace(Instant::now());
             }),
             tokio::spawn(async move {
-                let _ = client_clone_3.send_request("GET", String::from("https://localhost:12345")).await;
+                let _ = client_clone_3.send_request("GET", String::from("https://localhost:12345"), None).await;
                 third_timestamp.lock().unwrap().replace(Instant::now());
             })
         );

@@ -155,6 +155,7 @@ pub struct TaskConfig {
     pub ignore_robots_txt: bool,
     pub keep_html_in_memory: bool,
     pub user_agent: String,
+    pub robots_txt_info_url: Option<String>,
     pub crawl_delay_ms: usize,
 }
 
@@ -162,13 +163,14 @@ impl TaskConfig {
     pub fn new(run_config: RunConfig) -> TaskConfig {
         TaskConfig {
             uri: run_config.url.parse::<hyper::Uri>().unwrap(),
-            ignore_redirects: run_config.ignore_redirects.unwrap_or_else(|| false),
-            maximum_redirects: run_config.maximum_redirects.unwrap_or_else(|| 10),
-            maximum_depth: run_config.maximum_depth.unwrap_or_else(|| 16),
-            ignore_robots_txt: run_config.ignore_robots_txt.unwrap_or_else(|| false),
-            keep_html_in_memory: run_config.keep_html_in_memory.unwrap_or_else(|| false),
-            user_agent: run_config.user_agent.unwrap_or_else(|| String::from("tarantula")),
-            crawl_delay_ms: run_config.crawl_delay_ms.unwrap_or_else(|| 10_000),
+            ignore_redirects: run_config.ignore_redirects.unwrap(),
+            maximum_redirects: run_config.maximum_redirects.unwrap(),
+            maximum_depth: run_config.maximum_depth.unwrap(),
+            ignore_robots_txt: run_config.ignore_robots_txt.unwrap(),
+            keep_html_in_memory: run_config.keep_html_in_memory.unwrap(),
+            user_agent: run_config.user_agent.unwrap(),
+            robots_txt_info_url: run_config.robots_txt_info_url,
+            crawl_delay_ms: run_config.crawl_delay_ms.unwrap(),
         }
     }
 }

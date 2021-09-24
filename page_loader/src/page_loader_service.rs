@@ -77,8 +77,9 @@ impl PageLoaderService {
                         let tx_task = tx_clone.clone();
                         let local_command_factory = arc_command_factory.clone();
                         tokio::spawn(async move {
+                            let robots_txt_info_url = task_context.lock().unwrap().get_config().lock().unwrap().robots_txt_info_url.clone();
                             let page_crawl_command = local_command_factory.create_page_crawl_command(url, raw_url, task_context, current_depth);
-                            do_load(response_channel, page_crawl_command, tx_task).await;
+                            do_load(response_channel, page_crawl_command, tx_task, robots_txt_info_url).await;
                         });// Don't await here. Otherwise all processes might hang indefinitely
                     }
                     Command::CrawlDomainCommand { run_config, response_channel, task_context_uuid, .. } => {
@@ -97,7 +98,7 @@ impl PageLoaderService {
     }
 }
 
-async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<Command>) {
+async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<Command>, robots_txt_info_url: Option<String>) {
     // updated last_command_received for garbage collection handling
     page_crawl_command.get_task_context().lock().unwrap().set_last_command_received(Instant::now());
     let url = page_crawl_command.get_url_clone();
@@ -105,7 +106,7 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
 
     let http_client = page_crawl_command.get_task_context().lock().unwrap().get_http_client();
     let task_context_uuid = page_crawl_command.get_task_context().lock().unwrap().get_uuid_clone();
-    let page_response = page_crawl_command.crawl(http_client, task_context_uuid).await;
+    let page_response = page_crawl_command.crawl(http_client, task_context_uuid, robots_txt_info_url).await;
     if let Ok(page_response_result) = page_response {
         if let Some(crawl_result) = page_response_result {
             let task_context = page_crawl_command.get_task_context();
@@ -245,7 +246,7 @@ mod tests {
         }
 
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
-        async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid) -> std::result::Result<Option<PageResponse>, String> {
+        async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> std::result::Result<Option<PageResponse>, String> {
             let mut response = PageResponse::new(self.url.clone(), self.url.clone(), Uuid::new_v4());
             if !self.url.starts_with("https://example.com/inner") {
                 // if this is the initial crawl, we want to emulate additional links`
