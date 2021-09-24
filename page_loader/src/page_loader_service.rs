@@ -381,7 +381,7 @@ mod tests {
             if let CrawlerEvent::PageEvent { page_response: actual_result } = resp_rx.recv().await.unwrap() {
                 let expected_result = expected_results
                     .drain_filter(|it: &mut PageResponse| it.original_requested_url.eq(&actual_result.original_requested_url));
-                println!("Got {:?}", actual_result);
+                // println!("Got {:?}", actual_result);
                 assert_eq!(expected_result.count(), 1);
                 actual_results.push(actual_result);
             } else {
