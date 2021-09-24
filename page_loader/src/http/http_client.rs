@@ -34,6 +34,18 @@ pub struct HttpClientImpl {
 impl HttpClientImpl {
     pub fn new(user_agent: String, rate_limiting_ms: usize) -> HttpClientImpl {
         let connector = HttpsConnector::new();
+        HttpClientImpl::new_(connector, user_agent, rate_limiting_ms)
+    }
+
+    #[cfg(test)]
+    pub fn new_with_timeout(user_agent: String, rate_limiting_ms: usize, timeout_ms: usize) -> HttpClientImpl {
+        let mut http_connector = HttpConnector::new();
+        http_connector.set_connect_timeout(Some(Duration::from_millis(timeout_ms as u64)));
+        let https_connector = HttpsConnector::new_with_connector(http_connector);
+        HttpClientImpl::new_(https_connector, user_agent, rate_limiting_ms)
+    }
+
+    fn new_(connector: HttpsConnector<HttpConnector>, user_agent: String, rate_limiting_ms: usize) -> HttpClientImpl {
         HttpClientImpl {
             user_agent,
             client: Client::builder().build::<_, hyper::Body>(connector),
@@ -97,7 +109,48 @@ impl HttpClient for HttpClientImpl {
 
 #[cfg(test)]
 mod tests {
-    fn test() {
-        todo!("needs test to make sure rate limit is respected");
+    use super::*;
+
+    #[tokio::test]
+    async fn rate_limit_is_respected_properly() {
+        // given: a client
+        let rate_limit = 11; // the rate limit must be high enough to include http timeout, set below (HttpClientImpl::new_with_timeout
+        let client = Arc::new(HttpClientImpl::new_with_timeout("test-client".into(), rate_limit, 10));
+        let client_clone_1 = client.clone();
+        let client_clone_2 = client.clone();
+        let client_clone_3 = client.clone();
+        let first_timestamp = Arc::new(Mutex::new(Some(Instant::now())));
+        let second_timestamp = Arc::new(Mutex::new(Some(Instant::now())));
+        let third_timestamp = Arc::new(Mutex::new(Some(Instant::now())));
+        let first_timestamp_clone = first_timestamp.clone();
+        let second_timestamp_clone = second_timestamp.clone();
+        let third_timestamp_clone = third_timestamp.clone();
+
+        // when: client is invoked several times within rate_limiting_ms
+        let _ = tokio::join!(
+            tokio::spawn(async move {
+                let _ = client_clone_1.send_request("GET", String::from("https://localhost:12345")).await;
+                first_timestamp.lock().unwrap().replace(Instant::now());
+            }),
+            tokio::spawn(async move {
+                let _ = client_clone_2.send_request("GET", String::from("https://localhost:12345")).await;
+                second_timestamp.lock().unwrap().replace(Instant::now());
+            }),
+            tokio::spawn(async move {
+                let _ = client_clone_3.send_request("GET", String::from("https://localhost:12345")).await;
+                third_timestamp.lock().unwrap().replace(Instant::now());
+            })
+        );
+
+        // then: rate is limited appropriately
+        // note that first, second and third are probably unordered, due to threading. That's why we need to bring them in order first
+        let mut ordered_times = vec![first_timestamp_clone, second_timestamp_clone, third_timestamp_clone];
+        ordered_times.sort_by(|a, b| a.lock().unwrap().unwrap().cmp(&b.lock().unwrap().unwrap()));
+        let second_first_diff = ordered_times[1].lock().unwrap().unwrap().duration_since(ordered_times[0].lock().unwrap().unwrap()).as_millis();
+        let third_second_diff = ordered_times[2].lock().unwrap().unwrap().duration_since(ordered_times[1].lock().unwrap().unwrap()).as_millis();
+        // println!("second_first_diff {}", second_first_diff);
+        // println!("third_second_diff {}", third_second_diff);
+        assert_eq!(second_first_diff >= rate_limit as u128, true);
+        assert_eq!(third_second_diff >= rate_limit as u128, true);
     }
 }
