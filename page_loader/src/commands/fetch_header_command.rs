@@ -94,7 +94,7 @@ mod tests {
     use uuid::Uuid;
 
     use dom_parser::DomParser;
-    use linkresult::LinkTypeChecker;
+    use linkresult::link_type_checker::LinkTypeChecker;
     use linkresult::uri_service::UriService;
     use responses::run_config::RunConfig;
 

@@ -10,19 +10,19 @@ use rocket::tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 use page_loader::events::crawler_event::CrawlerEvent;
-use page_loader::page_loader_service::Command;
-use page_loader::page_loader_service::Command::CrawlDomainCommand;
+use page_loader::page_loader_service::PageLoaderServiceCommand;
+use page_loader::page_loader_service::PageLoaderServiceCommand::CrawlDomainCommand;
 use responses::complete_response::CompleteResponse;
 use responses::run_config::RunConfig;
 
 #[put("/crawl", data = "<run_config>")]
-pub fn crawl(run_config: Json<RunConfig>, page_loader_tx_channel: &State<Sender<Command>>) -> status::Accepted<String> {
+pub fn crawl(run_config: Json<RunConfig>, page_loader_tx_channel: &State<Sender<PageLoaderServiceCommand>>) -> status::Accepted<String> {
     let task_context_uuid = Uuid::new_v4();
     tokio::spawn(process(run_config.0, task_context_uuid.clone(), page_loader_tx_channel.deref().deref().clone()));
     status::Accepted(Some(format!("{}", task_context_uuid)))
 }
 
-async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_channel: Sender<Command>) {
+async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_channel: Sender<PageLoaderServiceCommand>) {
     let num_cpus = num_cpus::get();
     let (resp_tx, mut resp_rx) = mpsc::channel(num_cpus * 2);
     if let Ok(_) = page_loader_tx_channel.send(CrawlDomainCommand {

@@ -3,7 +3,10 @@ use std::sync::Arc;
 use hyper::Uri;
 use log::trace;
 
-use crate::{LinkTypeChecker, UriProtocol, UriScope};
+use responses::uri_protocol::UriProtocol;
+use responses::uri_scope::UriScope;
+
+use crate::link_type_checker::LinkTypeChecker;
 
 pub struct UriService {
     link_type_checker: Arc<LinkTypeChecker>,

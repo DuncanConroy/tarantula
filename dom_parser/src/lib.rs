@@ -4,7 +4,8 @@ use chrono::Utc;
 use ego_tree::Tree;
 use scraper::{Html, Node};
 
-use linkresult::{LinkTypeChecker, UriResult};
+use linkresult::link_type_checker::LinkTypeChecker;
+use linkresult::uri_result::UriResult;
 use responses::link::Link;
 
 pub trait DomParser: Sync + Send {
