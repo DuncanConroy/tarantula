@@ -9,7 +9,7 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 use dom_parser::{DomParser, DomParserService};
-use linkresult::LinkTypeChecker;
+use linkresult::link_type_checker::LinkTypeChecker;
 use linkresult::uri_service::UriService;
 use responses::run_config::RunConfig;
 

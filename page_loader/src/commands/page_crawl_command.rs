@@ -168,8 +168,8 @@ mod tests {
     use uuid::Uuid;
 
     use dom_parser::DomParser;
+    use linkresult::uri_result::UriResult;
     use linkresult::uri_service::UriService;
-    use linkresult::UriResult;
     use responses::get_response::GetResponse;
     use responses::head_response::HeadResponse;
     use responses::redirect::Redirect;

@@ -119,7 +119,7 @@ mod tests {
     #[tokio::test]
     async fn rate_limit_is_respected_properly() {
         // given: a client
-        let rate_limit = 11; // the rate limit must be high enough to include http timeout, set below (HttpClientImpl::new_with_timeout
+        let rate_limit = 11; // the rate limit must be high enough to include http timeout, set below HttpClientImpl::new_with_timeout
         let client = Arc::new(HttpClientImpl::new_with_timeout("test-client".into(), rate_limit, 10));
         let client_clone_1 = client.clone();
         let client_clone_2 = client.clone();
