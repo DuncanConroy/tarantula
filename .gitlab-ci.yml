@@ -30,9 +30,6 @@ deploy_latest:
   stage: build
   image: 'rust:latest'
   script:
-    - rustup default nightly
-    - cargo test --workspace
-    - cargo build --release
     - rm -rf tarantula 2> /dev/null
     - mkdir tarantula
     - mv deploy.sh tarantula/deploy.sh
