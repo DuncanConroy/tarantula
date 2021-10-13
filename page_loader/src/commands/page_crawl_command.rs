@@ -7,6 +7,7 @@ use hyper::header::CONTENT_TYPE;
 use log::debug;
 use uuid::Uuid;
 
+use responses::head_response::HeadResponse;
 use responses::link::Link;
 use responses::page_response::PageResponse;
 use responses::status_code::StatusCode;
@@ -43,7 +44,7 @@ impl PageCrawlCommand {
         }
     }
 
-    fn verify_crawlability(&self) -> bool {
+    fn verify_crawlability(&self) -> i8 {
         let request_object = self.request_object.clone();
         let request_object_locked = request_object.lock().unwrap();
         let task_context = request_object_locked.task_context.clone();
@@ -52,7 +53,7 @@ impl PageCrawlCommand {
         if config_locked.maximum_depth > 0 &&
             self.current_depth > config_locked.maximum_depth {
             debug!("Dropping requested url: {} -> maximum_depth reached: {}", &request_object_locked.url, config_locked.maximum_depth);
-            return false;
+            return 0;
         }
         // at this point, the config isn't required anymore and can therefore be dropped
         drop(config_locked);
@@ -61,15 +62,15 @@ impl PageCrawlCommand {
         let task_context_locked = task_context.lock().unwrap();
         if task_context_locked.get_all_known_links().lock().unwrap().contains(&request_object_locked.url) {
             debug!("Dropping requested url: {} -> already known", &request_object_locked.url);
-            return false;
+            return 0;
         }
 
         if !task_context_locked.can_access(&request_object_locked.url) {
             debug!("Dropping requested url: {} -> can't access (robots.txt)", &request_object_locked.url);
-            return false;
+            return -1;
         }
 
-        true
+        1
     }
 
     async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String> {
@@ -141,8 +142,21 @@ impl CrawlCommand for PageCrawlCommand {
     fn get_page_request(&self) -> Arc<Mutex<PageRequest>> { self.request_object.clone() }
 
     async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String> {
-        if !self.verify_crawlability() {
+        let crawlability = self.verify_crawlability();
+        if crawlability == 0 {
             return Ok(None);
+        } else if crawlability == -1 {
+            let request_object_locked = self.request_object.lock().unwrap();
+            let requested_url = request_object_locked.url.clone();
+            let mut response = PageResponse::new(requested_url.clone(), request_object_locked.raw_url.clone(), task_context_uuid);
+            response.head = Some(HeadResponse::new(requested_url,
+                                                   StatusCode {
+                                                       code: 403,
+                                                       label: "[tarantula_internal] BLOCKED BY robots.txt".into(),
+                                                   },
+            ));
+
+            return Ok(Some(response));
         }
 
         self.perform_crawl_internal(http_client, task_context_uuid, robots_txt_info_url).await
@@ -408,8 +422,11 @@ mod tests {
         let mock_http_client = get_mock_http_client();
         let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
-        // then: expect none
-        assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should not crawl urls forbidden by robots.txt");
+        // then: expect Some with 403 - [tarantula_internal] BLOCKED BY robots.txt", "Should not crawl urls forbidden by robots.txt
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should have result for urls forbidden by robots.txt");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have HEAD result for urls forbidden by robots.txt");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.as_ref().unwrap().http_response_code.code, 403, "Should have HEAD response code for urls forbidden by robots.txt");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.as_ref().unwrap().http_response_code.label, "[tarantula_internal] BLOCKED BY robots.txt", "Should have HEAD label for urls forbidden by robots.txt");
     }
 
     #[tokio::test]
