@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -8,6 +8,7 @@ use hyper::{Body, Response, Uri};
 use hyper::header::HeaderValue;
 use log::{debug, info, trace};
 
+use linkresult::uri_service::UriService;
 use responses::head_response::HeadResponse;
 use responses::redirect::Redirect;
 use responses::response_timings::ResponseTimings;
@@ -15,21 +16,19 @@ use responses::status_code::StatusCode;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
-use crate::page_request::PageRequest;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+    async fn fetch_header(&self, url: String, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, page_request: Arc<Mutex<PageRequest>>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
+    async fn fetch_header(&self, url: String, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
         let start_time = DateTime::from(Utc::now());
-        let mut uri = page_request.lock().unwrap().url.clone();
-        let maximum_redirects = page_request.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
+        let mut uri = url.clone();
 
         let mut num_redirects = 0;
         if redirects.is_some() {
@@ -43,8 +42,8 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
         if num_redirects < maximum_redirects && response.status().is_redirection() {
             if let Some(location_header) = response.headers().get("location") {
-                let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(&page_request, redirects, uri, &response, &headers, location_header, start_time);
-                let response = self.fetch_header(page_request.clone(), http_client.clone(), Some(redirects_for_next), robots_txt_info_url.clone()).await;
+                let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(uri_service.clone(), redirects, uri, &response, &headers, location_header, start_time);
+                let response = self.fetch_header(url.clone(), maximum_redirects, uri_service.clone(), http_client.clone(), Some(redirects_for_next), robots_txt_info_url.clone()).await;
                 return response;
             }
             let error_message = format!("No valid location found in redirect header {:?}", response);
@@ -64,8 +63,7 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
 }
 
 impl DefaultFetchHeaderCommand {
-    fn append_redirect(page_request: &Arc<Mutex<PageRequest>>, redirects: Option<Vec<Redirect>>, uri: String, response: &Response<Body>, headers: &HashMap<String, String>, location_header: &HeaderValue, redirect_start_time: DateTime<Utc>) -> Vec<Redirect> {
-        let uri_service = page_request.lock().unwrap().task_context.lock().unwrap().get_uri_service();
+    fn append_redirect(uri_service: Arc<UriService>, redirects: Option<Vec<Redirect>>, uri: String, response: &Response<Body>, headers: &HashMap<String, String>, location_header: &HeaderValue, redirect_start_time: DateTime<Utc>) -> Vec<Redirect> {
         let uri_object = Uri::from_str(&uri).unwrap();
         let adjusted_uri = uri_service.form_full_url(uri_object.scheme_str().unwrap(), location_header.to_str().unwrap(), uri_object.host().unwrap(), &Some(uri.clone()));
         let redirect = Redirect {
@@ -89,46 +87,12 @@ impl DefaultFetchHeaderCommand {
 mod tests {
     use mockall::*;
     use mockall::predicate::eq;
-    use tokio::sync::mpsc::Sender;
-    use tokio::time::Instant;
-    use uuid::Uuid;
 
-    use dom_parser::DomParser;
     use linkresult::link_type_checker::LinkTypeChecker;
     use linkresult::uri_service::UriService;
-    use responses::run_config::RunConfig;
-
-    use crate::events::crawler_event::CrawlerEvent;
-    use crate::task_context::robots_service::RobotsTxt;
-    use crate::task_context::task_context::{FullTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextServices};
 
     use super::*;
 
-    mock! {
-        MyTaskContext {}
-        impl TaskContext for MyTaskContext {
-            fn get_uuid_clone(&self) -> Uuid;
-            fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
-            fn get_url(&self)->String;
-            fn get_last_command_received(&self) -> Instant;
-            fn set_last_command_received(&mut self, instant: Instant);
-            fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
-            fn get_response_channel(&self) -> &Sender<CrawlerEvent>;
-        }
-        impl TaskContextServices for MyTaskContext{
-            fn get_uri_service(&self) -> Arc<UriService>;
-            fn get_dom_parser(&self) ->Arc<dyn DomParser>;
-            fn get_http_client(&self) -> Arc<dyn HttpClient>;
-        }
-        impl KnownLinks for MyTaskContext{
-            fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
-            fn add_known_link(&self, link: String);
-        }
-        impl RobotsTxt for MyTaskContext{
-            fn can_access(&self, item_uri: &str) -> bool;
-        }
-        impl FullTaskContext for MyTaskContext{}
-    }
     mock! {
         MyHttpClient {}
         #[async_trait]
@@ -142,10 +106,7 @@ mod tests {
     async fn returns_simple_result_on_simple_request_without_redirect_following() {
         // given: simple fetch command
         let command = DefaultFetchHeaderCommand {};
-        let mut mock_task_context = MockMyTaskContext::new();
-        let task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
-        mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
-        let page_request = PageRequest::new("https://example.com".into(), "/".into(), None, Arc::new(Mutex::new(mock_task_context)));
+        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new("example.com"))));
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
             .status(200)
@@ -154,12 +115,7 @@ mod tests {
         let mock_http_client = Arc::new(mock_http_client);
 
         // when: fetch is invoked
-        let result = command.fetch_header(
-            Arc::new(Mutex::new(page_request)),
-            mock_http_client,
-            None,
-            None,
-        ).await;
+        let result = command.fetch_header("https://example.com".into(), 10, uri_service, mock_http_client, None, None).await;
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
@@ -170,17 +126,15 @@ mod tests {
     #[tokio::test]
     async fn should_return_redirect_list_up_to_max_redirects() {
         // given: simple fetch command
+        let target_domain = "example.com";
+        let target_url = String::from(format!("https://{}", target_domain));
         let command = DefaultFetchHeaderCommand {};
-        let mut mock_task_context = MockMyTaskContext::new();
-        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new("example.com"))));
-        mock_task_context.expect_get_uri_service().return_const(uri_service.clone());
-        let mut task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
-        task_config.maximum_redirects = 2;
-        mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
+        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new(target_domain))));
+
         let mut mock_http_client = MockMyHttpClient::new();
         let mut sequence = Sequence::new();
         mock_http_client.expect_head()
-            .with(eq(String::from("https://example.com")), eq(None))
+            .with(eq(target_url.clone()), eq(None))
             .times(1)
             .in_sequence(&mut sequence)
             .returning(|_, _x: Option<String>| Ok(Response::builder()
@@ -204,10 +158,9 @@ mod tests {
             .body(Body::from(""))
             .unwrap()));
         let mock_http_client = Arc::new(mock_http_client);
-        let page_request = PageRequest::new("https://example.com".into(), "/".into(), None, Arc::new(Mutex::new(mock_task_context)));
 
         // when: fetch is invoked
-        let result = command.fetch_header(Arc::new(Mutex::new(page_request)), mock_http_client, None, None).await;
+        let result = command.fetch_header(target_url.clone(), 2, uri_service, mock_http_client, None, None).await;
 
         // then: simple response is returned, with maximum_redirects redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
@@ -216,7 +169,7 @@ mod tests {
         assert_eq!(result_unwrapped.headers.get("x-custom").unwrap(), &String::from("Final destination"), "Should have headers embedded");
         assert_eq!(result_unwrapped.response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
 
-        assert_eq!(result_unwrapped.redirects[0].source, String::from("https://example.com"), "Source should match");
+        assert_eq!(result_unwrapped.redirects[0].source, target_url, "Source should match");
         assert_eq!(result_unwrapped.redirects[0].destination, String::from("https://first-redirect.example.com/"), "Destination should match");
         assert_eq!(result_unwrapped.redirects[0].headers.get("location").unwrap(), &String::from("https://first-redirect.example.com/"), "Should have headers embedded");
         assert_eq!(result_unwrapped.redirects[0].response_timings.end_time.is_some(), true, "Should have updated end_time after successful run - redirect[0]");
