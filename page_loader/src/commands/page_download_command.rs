@@ -42,49 +42,11 @@ impl PageDownloadCommand for DefaultPageDownloadCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
     use hyper::{Body, Response};
     use mockall::*;
-    use tokio::sync::mpsc::Sender;
-    use tokio::time::Instant;
-    use uuid::Uuid;
-
-    use dom_parser::DomParser;
-    use linkresult::uri_service::UriService;
-    use responses::run_config::RunConfig;
-
-    use crate::events::crawler_event::CrawlerEvent;
-    use crate::task_context::robots_service::RobotsTxt;
-    use crate::task_context::task_context::{FullTaskContext, KnownLinks, TaskConfig, TaskContext, TaskContextServices};
 
     use super::*;
 
-    mock! {
-        MyTaskContext {}
-        impl TaskContext for MyTaskContext {
-            fn get_uuid_clone(&self) -> Uuid;
-            fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
-            fn get_url(&self)->String;
-            fn get_last_command_received(&self) -> Instant;
-            fn set_last_command_received(&mut self, instant: Instant);
-            fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool;
-            fn get_response_channel(&self) -> &Sender<CrawlerEvent>;
-        }
-        impl TaskContextServices for MyTaskContext{
-            fn get_uri_service(&self) -> Arc<UriService>;
-            fn get_dom_parser(&self) ->Arc<dyn DomParser>;
-            fn get_http_client(&self) -> Arc<dyn HttpClient>;
-        }
-        impl KnownLinks for MyTaskContext{
-            fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
-            fn add_known_link(&self, link: String);
-        }
-        impl RobotsTxt for MyTaskContext{
-            fn can_access(&self, item_uri: &str) -> bool;
-        }
-        impl FullTaskContext for MyTaskContext{}
-    }
     mock! {
         MyHttpClient {}
         #[async_trait]
@@ -98,9 +60,6 @@ mod tests {
     async fn returns_simple_result_on_simple_request() {
         // given: simple download command
         let command = DefaultPageDownloadCommand {};
-        let mut mock_task_context = MockMyTaskContext::new();
-        let task_config = TaskConfig::new(RunConfig::new("https://example.com".into(), None));
-        mock_task_context.expect_get_config().return_const(Arc::new(Mutex::new(task_config)));
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_get().returning(|_, _| Ok(Response::builder()
             .status(200)
