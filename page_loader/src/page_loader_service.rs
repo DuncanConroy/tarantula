@@ -120,10 +120,7 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
         if let Some(crawl_result) = page_response_result {
             consume_crawl_result(&response_channel, &page_crawl_command, &tx, crawl_result).await
         } else {
-            // todo: send some response to response channel - we got nothing here :)
-            // todo!("Proper error handling");
-            debug!("no crawl result");
-            // is this even an error or just because of robots.txt or other stuff?
+            debug!("Link skipped - already known");
         }
     } else {
         // todo!("Proper error handling is required!");

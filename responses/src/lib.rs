@@ -9,3 +9,4 @@ pub mod uri_protocol;
 pub mod uri_scope;
 pub mod complete_response;
 pub mod run_config;
+pub mod crawl_status;
