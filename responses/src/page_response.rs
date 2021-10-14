@@ -1,6 +1,7 @@
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::crawl_status::CrawlStatus;
 use crate::get_response::GetResponse;
 use crate::head_response::HeadResponse;
 use crate::link::Link;
@@ -14,6 +15,7 @@ pub struct PageResponse {
     pub head: Option<HeadResponse>,
     pub get: Option<GetResponse>,
     pub links: Option<Vec<Link>>,
+    pub crawl_status: Option<CrawlStatus>,
     pub response_timings: ResponseTimings,
     pub task_uuid: Uuid,
 }
@@ -29,6 +31,7 @@ impl PageResponse {
             head: None,
             get: None,
             links: None,
+            crawl_status: None,
             response_timings,
             task_uuid: uuid,
         }
