@@ -24,7 +24,7 @@ build_latest:
     - cargo build --release
   artifacts:
     paths:
-      - tarantula
+      - target
 
 deploy_latest:
   stage: build
