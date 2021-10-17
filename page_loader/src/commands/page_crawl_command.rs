@@ -7,7 +7,10 @@ use hyper::header::CONTENT_TYPE;
 use log::debug;
 use uuid::Uuid;
 
+use dom_parser::DomParser;
 use responses::crawl_status::CrawlStatus;
+use responses::get_response::GetResponse;
+use responses::head_response::HeadResponse;
 use responses::link::Link;
 use responses::page_response::PageResponse;
 use responses::status_code::StatusCode;
@@ -55,7 +58,8 @@ impl PageCrawlCommand {
         let request_object = self.request_object.clone();
         let request_object_locked = request_object.lock().unwrap();
         let task_context = request_object_locked.task_context.clone();
-        let config = task_context.lock().unwrap().get_config().clone();
+        let task_context_locked = task_context.lock().unwrap();
+        let config = task_context_locked.get_config().clone();
         let config_locked = config.lock().unwrap();
         if config_locked.maximum_depth > 0 &&
             self.current_depth > config_locked.maximum_depth {
@@ -66,7 +70,6 @@ impl PageCrawlCommand {
         drop(config_locked);
         drop(config);
 
-        let task_context_locked = task_context.lock().unwrap();
         if task_context_locked.get_all_known_links().lock().unwrap().contains(&request_object_locked.url) {
             debug!("Dropping requested url: {} -> already known", &request_object_locked.url);
             return Crawlability::AlreadyKnown;
@@ -88,30 +91,50 @@ impl PageCrawlCommand {
         let maximum_redirects = request_object_cloned.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
         let uri_service = request_object_cloned.lock().unwrap().task_context.lock().unwrap().get_uri_service();
         let fetch_header_response = self.fetch_header_command.fetch_header(url.clone(), maximum_redirects, uri_service, http_client, None, robots_txt_info_url.clone()).await;
+        page_response = self.consume_fetch_header_response(robots_txt_info_url, request_object_cloned, page_response, fetch_header_response).await;
+
+        page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
+        Ok(Some(page_response))
+    }
+
+    async fn consume_fetch_header_response(&self, robots_txt_info_url: Option<String>, request_object: Arc<Mutex<PageRequest>>, mut page_response: PageResponse, fetch_header_response: Result<(HeadResponse, Arc<dyn HttpClient>), String>) -> PageResponse {
         if let Ok(result) = fetch_header_response {
             let http_client = result.1;
             let fetch_header_response = result.0;
-            page_response.head = Some(fetch_header_response);
-            let final_uri = page_response.head.as_ref().unwrap().get_final_uri();
+            let final_uri = fetch_header_response.get_final_uri();
             page_response.final_url_after_redirects = Some(final_uri.clone());
 
-            let headers = &page_response.head.as_ref().unwrap().headers;
-            if self.should_download_page(headers, &page_response.head.as_ref().unwrap().http_response_code) {
-                let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client, robots_txt_info_url.clone()).await;
-                if let Ok(download_result) = page_download_response {
-                    page_response.get = Some(download_result);
-                    if self.is_html(&page_response.get.as_ref().unwrap().headers) {
-                        page_response.links = self.extract_links(page_response.get.as_ref().unwrap().body.as_ref());
-                    }
-                } else {
-                    panic!("proper error handling needed")
-                }
+            let headers = &fetch_header_response.headers;
+            let should_download = self.should_download_page(headers, &fetch_header_response.http_response_code);
+            page_response.head = Some(fetch_header_response);
+
+            if !should_download { return page_response; }
+
+            let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client, robots_txt_info_url.clone()).await;
+            page_response = self.consume_page_download_response(request_object, page_response, page_download_response);
+        }
+
+        page_response
+    }
+
+    fn consume_page_download_response(&self, request_object: Arc<Mutex<PageRequest>>, mut page_response: PageResponse, page_download_response: Result<GetResponse, String>) -> PageResponse{
+        if let Ok(download_result) = page_download_response {
+            if self.is_html(&download_result.headers) {
+                let request_object_locked = request_object.lock().unwrap();
+                page_response.links = Self::extract_links(
+                    request_object_locked.get_protocol(),
+                    request_object_locked.get_host(),
+                    download_result.body.as_ref(),
+                    request_object_locked.task_context.lock().unwrap().get_dom_parser(),
+                );
             }
 
-            // todo work with dynamic filtering and mapping classes, like spring routing, etc.
+            page_response.get = Some(download_result);
+        } else {
+            panic!("proper error handling needed")
         }
-        page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
-        Ok(Some(page_response))
+
+        page_response
     }
 
     fn should_download_page(&self, headers: &HashMap<String, String>, status_code: &StatusCode) -> bool {
@@ -125,18 +148,15 @@ impl PageCrawlCommand {
             headers.get(CONTENT_TYPE.as_str()).unwrap().contains("text/html")
     }
 
-    fn extract_links(&self, body: Option<&String>) -> Option<Vec<Link>> {
-        // todo!("TEST")
+    fn extract_links(protocol: String, host: String, body: Option<&String>, dom_parser: Arc<dyn DomParser>) -> Option<Vec<Link>> {
         if let Some(body_content) = body {
-            let request_object = self.request_object.lock().unwrap();
-            let dom_parser = request_object.task_context.lock().unwrap().get_dom_parser();
             let links = dom_parser.get_links(
-                &request_object.get_protocol(),
-                &request_object.get_host(),
+                &protocol,
+                &host,
                 body_content);
 
             return match links {
-                None => { None }
+                None => None,
                 Some(links) => Some(links.links)
             };
         }
@@ -187,7 +207,7 @@ mod tests {
     use tokio::time::Instant;
     use uuid::Uuid;
 
-    use dom_parser::DomParser;
+    use dom_parser::{DomParser, DomParserService};
     use linkresult::link_type_checker::LinkTypeChecker;
     use linkresult::uri_result::UriResult;
     use linkresult::uri_service::UriService;
@@ -304,8 +324,9 @@ mod tests {
 
         // then: expect none
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should have result, if max depth reached");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().crawl_status.is_some(), true, "Should have crawl status, if max depth reached");
-        assert_eq!(crawl_result.unwrap().unwrap().crawl_status.unwrap(), CrawlStatus::MaximumCrawlDepthReached, "Should have crawl status MaximumCrawlDepthReached, if max depth reached");
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.crawl_status.is_some(), true, "Should have crawl status, if max depth reached");
+        assert_eq!(crawl_result_unwrapped.crawl_status.unwrap(), CrawlStatus::MaximumCrawlDepthReached, "Should have crawl status MaximumCrawlDepthReached, if max depth reached");
     }
 
     #[tokio::test]
@@ -437,8 +458,9 @@ mod tests {
 
         // then: expect CrawlStatus::RestrictedByRobotsTxt
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should have result for urls forbidden by robots.txt");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().crawl_status.is_some(), true, "Should have crawl_status for urls forbidden by robots.txt");
-        assert_eq!(crawl_result.unwrap().unwrap().crawl_status.unwrap(), CrawlStatus::RestrictedByRobotsTxt, "Should have RestrictedByRobotsTxt for urls forbidden by robots.txt");
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.crawl_status.is_some(), true, "Should have crawl_status for urls forbidden by robots.txt");
+        assert_eq!(crawl_result_unwrapped.crawl_status.unwrap(), CrawlStatus::RestrictedByRobotsTxt, "Should have RestrictedByRobotsTxt for urls forbidden by robots.txt");
     }
 
     #[tokio::test]
@@ -471,9 +493,10 @@ mod tests {
 
         // then: expect some PageResponse with Teapot status code
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.as_ref().unwrap().http_response_code.code, hyper::StatusCode::IM_A_TEAPOT.as_u16());
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.head.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result_unwrapped.head.as_ref().unwrap().http_response_code.code, hyper::StatusCode::IM_A_TEAPOT.as_u16());
+        assert_eq!(crawl_result_unwrapped.response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
     }
 
     #[tokio::test]
@@ -506,13 +529,14 @@ mod tests {
 
         // then: expect some PageResponse with InternalServerError status code and no body
         assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl urls if allowed");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.is_none(), true, "Should not have get response, if status is not ok");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.as_ref().unwrap().http_response_code.code, hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16());
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
-        let is_page_response_before_fetch_header_response = crawl_result.as_ref().unwrap().as_ref().unwrap()
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.get.is_none(), true, "Should not have get response, if status is not ok");
+        assert_eq!(crawl_result_unwrapped.head.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result_unwrapped.head.as_ref().unwrap().http_response_code.code, hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16());
+        assert_eq!(crawl_result_unwrapped.response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
+        let is_page_response_before_fetch_header_response = crawl_result_unwrapped
             .response_timings.start_time.as_ref().unwrap()
-            .cmp(crawl_result.as_ref().unwrap().as_ref().unwrap()
+            .cmp(crawl_result_unwrapped
                 .head.as_ref().unwrap()
                 .response_timings.start_time.as_ref().unwrap());
         assert_eq!(is_page_response_before_fetch_header_response, Ordering::Less, "PageResponse start_time should be before HeadResponse start_time");
@@ -552,8 +576,9 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some PageResponse without body
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.is_none(), true, "Should not have get response, if status content-type is not text/html");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.get.is_none(), true, "Should not have get response, if status content-type is not text/html");
+        assert_eq!(crawl_result_unwrapped.head.is_some(), true, "Should have head, regardless of status code");
     }
 
     #[tokio::test]
@@ -618,10 +643,25 @@ mod tests {
         let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
 
         // then: expect some PageResponse with body
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.as_ref().unwrap().body.is_some(), true, "Should have body, if status content-type is text/html");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().get.as_ref().unwrap().body.as_ref().unwrap(), &String::from("<html><p>Hello World!</p></html>"), "Should have body, if status content-type is text/html");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().head.is_some(), true, "Should have head, regardless of status code");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().final_url_after_redirects.is_some(), true, "Should have final_url_after_redirects updated");
-        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().final_url_after_redirects.as_ref().unwrap(), "https://final-redirection.example.com", "Should have final_url_after_redirects set to requested url");
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.get.as_ref().unwrap().body.is_some(), true, "Should have body, if status content-type is text/html");
+        assert_eq!(crawl_result_unwrapped.get.as_ref().unwrap().body.as_ref().unwrap(), &String::from("<html><p>Hello World!</p></html>"), "Should have body, if status content-type is text/html");
+        assert_eq!(crawl_result_unwrapped.head.is_some(), true, "Should have head, regardless of status code");
+        assert_eq!(crawl_result_unwrapped.final_url_after_redirects.is_some(), true, "Should have final_url_after_redirects updated");
+        assert_eq!(crawl_result_unwrapped.final_url_after_redirects.as_ref().unwrap(), "https://final-redirection.example.com", "Should have final_url_after_redirects set to requested url");
+    }
+
+    #[test]
+    fn extract_links_invokes_dom_parser() {
+        // given: a test body
+        let body = String::from("<a href=\"https://www.example.com\">");
+        let dom_parser = Arc::new(DomParserService::new(Arc::new(LinkTypeChecker::new("example.com"))));
+
+        // when: extract_links is invoked
+        let result = PageCrawlCommand::extract_links("https".into(), "example.com".into(), Some(&body), dom_parser);
+
+        // then: result contains 1 link
+        assert_eq!(result.is_some(), true, "Should contain a result");
+        assert_eq!(result.unwrap().len(), 1, "Should contain exactly one link");
     }
 }
