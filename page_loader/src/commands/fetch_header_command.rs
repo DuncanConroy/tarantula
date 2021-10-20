@@ -19,14 +19,14 @@ use crate::http::http_utils;
 
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, url: String, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+    async fn fetch_header(&self, url: String, ignore_redirects: bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, url: String, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
+    async fn fetch_header(&self, url: String, ignore_redirects: bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
         let start_time = DateTime::from(Utc::now());
         let mut uri = url.clone();
 
@@ -40,10 +40,11 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
         let response = http_client.head(uri.clone(), robots_txt_info_url.clone()).await.unwrap();
         trace!("HEAD for {}: {:?}", uri, response.headers());
         let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
-        if num_redirects < maximum_redirects && response.status().is_redirection() {
+        let can_process_redirects = !ignore_redirects && num_redirects < maximum_redirects && response.status().is_redirection();
+        if can_process_redirects {
             if let Some(location_header) = response.headers().get("location") {
                 let redirects_for_next = DefaultFetchHeaderCommand::append_redirect(uri_service.clone(), redirects, uri, &response, &headers, location_header, start_time);
-                let response = self.fetch_header(url.clone(), maximum_redirects, uri_service.clone(), http_client.clone(), Some(redirects_for_next), robots_txt_info_url.clone()).await;
+                let response = self.fetch_header(url.clone(), false, maximum_redirects, uri_service.clone(), http_client.clone(), Some(redirects_for_next), robots_txt_info_url.clone()).await;
                 return response;
             }
             let error_message = format!("No valid location found in redirect header {:?}", response);
@@ -115,7 +116,7 @@ mod tests {
         let mock_http_client = Arc::new(mock_http_client);
 
         // when: fetch is invoked
-        let result = command.fetch_header("https://example.com".into(), 10, uri_service, mock_http_client, None, None).await;
+        let result = command.fetch_header("https://example.com".into(), false, 10, uri_service, mock_http_client, None, None).await;
 
         // then: simple response is returned, with no redirects
         assert_eq!(result.is_ok(), true, "Expecting a simple Response");
@@ -160,10 +161,10 @@ mod tests {
         let mock_http_client = Arc::new(mock_http_client);
 
         // when: fetch is invoked
-        let result = command.fetch_header(target_url.clone(), 2, uri_service, mock_http_client, None, None).await;
+        let result = command.fetch_header(target_url.clone(), false, 2, uri_service, mock_http_client, None, None).await;
 
         // then: simple response is returned, with maximum_redirects redirects
-        assert_eq!(result.is_ok(), true, "Expecting a simple Response");
+        assert_eq!(result.is_ok(), true, "Expecting a Response with redirects");
         let result_unwrapped = result.unwrap().0;
         assert_eq!(result_unwrapped.redirects.len(), 2, "Should have two redirects");
         assert_eq!(result_unwrapped.headers.get("x-custom").unwrap(), &String::from("Final destination"), "Should have headers embedded");
@@ -179,5 +180,66 @@ mod tests {
         assert_eq!(result_unwrapped.redirects[1].response_timings.end_time.is_some(), true, "Should have updated end_time after successful run - redirect[1]");
     }
 
-    // todo: test with ignore redirect
+    #[tokio::test]
+    async fn should_return_no_redirect_if_ignore_redirects_is_true() {
+        // given: simple fetch command
+        let target_domain = "example.com";
+        let target_url = String::from(format!("https://{}", target_domain));
+        let command = DefaultFetchHeaderCommand {};
+        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new(target_domain))));
+
+        let mut mock_http_client = MockMyHttpClient::new();
+        let mut sequence = Sequence::new();
+        mock_http_client.expect_head()
+            .with(eq(target_url.clone()), eq(None))
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(|_, _x: Option<String>| Ok(Response::builder()
+                .status(308)
+                .header("location", "https://ignorable-redirect.example.com/")
+                .body(Body::from(""))
+                .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
+
+        // when: fetch is invoked
+        let result = command.fetch_header(target_url.clone(), true, 0, uri_service, mock_http_client, None, None).await;
+
+        // then: simple response is returned, with no redirects
+        assert_eq!(result.is_ok(), true, "Expecting a simple Response");
+        let result_unwrapped = result.unwrap().0;
+        assert_eq!(result_unwrapped.redirects.len(), 0, "Should have no redirects");
+        assert_eq!(result_unwrapped.response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
+    }
+
+    #[tokio::test]
+    // ignore_redirects takes precedence
+    async fn should_return_no_redirect_if_ignore_redirects_is_true_and_maximum_redirect_is_set() {
+        // given: simple fetch command
+        let target_domain = "example.com";
+        let target_url = String::from(format!("https://{}", target_domain));
+        let command = DefaultFetchHeaderCommand {};
+        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new(target_domain))));
+
+        let mut mock_http_client = MockMyHttpClient::new();
+        let mut sequence = Sequence::new();
+        mock_http_client.expect_head()
+            .with(eq(target_url.clone()), eq(None))
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(|_, _x: Option<String>| Ok(Response::builder()
+                .status(308)
+                .header("location", "https://ignorable-redirect.example.com/")
+                .body(Body::from(""))
+                .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
+
+        // when: fetch is invoked
+        let result = command.fetch_header(target_url.clone(), true, 2, uri_service, mock_http_client, None, None).await;
+
+        // then: simple response is returned, with no redirects
+        assert_eq!(result.is_ok(), true, "Expecting a simple Response");
+        let result_unwrapped = result.unwrap().0;
+        assert_eq!(result_unwrapped.redirects.len(), 0, "Should have no redirects");
+        assert_eq!(result_unwrapped.response_timings.end_time.is_some(), true, "Should have updated end_time after successful run");
+    }
 }
