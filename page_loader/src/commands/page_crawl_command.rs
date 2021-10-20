@@ -30,6 +30,7 @@ pub trait CrawlCommand: Sync + Send {
     fn get_current_depth(&self) -> u16;
 }
 
+#[derive(Debug, PartialEq)]
 enum Crawlability {
     AlreadyKnown,
     Crawlable,
@@ -62,7 +63,7 @@ impl PageCrawlCommand {
         let config = task_context_locked.get_config().clone();
         let config_locked = config.lock().unwrap();
         if config_locked.maximum_depth > 0 &&
-            self.current_depth > config_locked.maximum_depth {
+            self.current_depth >= config_locked.maximum_depth {
             debug!("Dropping requested url: {} -> maximum_depth reached: {}", &request_object_locked.url, config_locked.maximum_depth);
             return Crawlability::MaxDepthReached;
         }
@@ -186,6 +187,7 @@ impl CrawlCommand for PageCrawlCommand {
         let raw_url = request_object_locked.raw_url.clone();
         let mut response = PageResponse::new(requested_url, raw_url, task_context_uuid);
         response.crawl_status = status;
+        response.response_timings.end_time = Some(DateTime::from(Utc::now()));
         return Ok(Some(response));
     }
 
@@ -664,5 +666,45 @@ mod tests {
         // then: result contains 1 link
         assert_eq!(result.is_some(), true, "Should contain a result");
         assert_eq!(result.unwrap().len(), 1, "Should contain exactly one link");
+    }
+
+    #[tokio::test]
+    async fn returned_page_response_contains_correct_response_timings_on_max_depth_reached() {
+        // given: a task context that allows crawl
+        let url = String::from("https://example.com");
+        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new("example.com"))));
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_uri_service().return_const(uri_service.clone());
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = get_default_task_config();
+        config.lock().unwrap().maximum_depth = 1;
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_can_access().returning(|_| true);
+        let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
+
+        // when: invoked with a regular link
+        let mut page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command,
+            mock_page_download_command,
+        );
+        page_crawl_command.current_depth = 1;
+        assert_eq!(page_crawl_command.verify_crawlability(), Crawlability::MaxDepthReached, "verify_crawlability should return MaxDepthReached");
+        let mock_http_client = get_mock_http_client();
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
+
+        // then: expect some PageResponse with valid ResponseTimings
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should have a crawl result");
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.get.is_none(), true, "Should not have get response, if maxDepth is reached");
+        assert_eq!(crawl_result_unwrapped.head.is_none(), true, "Should not have head, if maxDepth is reached");
+        assert_eq!(crawl_result_unwrapped.response_timings.start_time.is_some(), true, "Should have start_time, if maxDepth is reached");
+        assert_eq!(crawl_result_unwrapped.response_timings.end_time.is_some(), true, "Should have end_time, if maxDepth is reached");
     }
 }
