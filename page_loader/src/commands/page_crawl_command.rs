@@ -89,8 +89,9 @@ impl PageCrawlCommand {
         let raw_url = request_object_cloned.lock().unwrap().raw_url.clone();
         let mut page_response = PageResponse::new(url.clone(), raw_url, task_context_uuid.clone());
         let maximum_redirects = request_object_cloned.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
+        let ignore_redirects = request_object_cloned.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().ignore_redirects;
         let uri_service = request_object_cloned.lock().unwrap().task_context.lock().unwrap().get_uri_service();
-        let fetch_header_response = self.fetch_header_command.fetch_header(url.clone(), maximum_redirects, uri_service, http_client, None, robots_txt_info_url.clone()).await;
+        let fetch_header_response = self.fetch_header_command.fetch_header(url.clone(), ignore_redirects, maximum_redirects, uri_service, http_client, None, robots_txt_info_url.clone()).await;
         page_response = self.consume_fetch_header_response(robots_txt_info_url, request_object_cloned, page_response, fetch_header_response).await;
 
         page_response.response_timings.end_time = Some(DateTime::from(Utc::now()));
@@ -267,7 +268,7 @@ mod tests {
         MyFetchHeaderCommand {}
         #[async_trait]
         impl FetchHeaderCommand for MyFetchHeaderCommand{
-            async fn fetch_header(&self, url: String, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> std::result::Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+            async fn fetch_header(&self, url: String, ignore_redirects:bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> std::result::Result<(HeadResponse, Arc<dyn HttpClient>), String>;
         }
     }
     mock! {
@@ -343,7 +344,7 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
@@ -407,7 +408,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
         let mut mock_http_client = MockMyHttpClient::new();
         mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
@@ -476,7 +477,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
         // when: invoked with a regular link
@@ -512,7 +513,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16(), label: hyper::StatusCode::INTERNAL_SERVER_ERROR.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16(), label: hyper::StatusCode::INTERNAL_SERVER_ERROR.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
         // when: invoked with a regular link
@@ -555,7 +556,7 @@ mod tests {
         mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _| {
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| {
             let mut header_response = HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() });
             header_response.headers.insert(CONTENT_TYPE.as_str().into(), "application/json; charset=UTF-8".into());
 
@@ -603,7 +604,7 @@ mod tests {
         });
 
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
-        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _| {
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| {
             let mut header_response = HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() });
             header_response.headers.insert(CONTENT_TYPE.as_str().into(), "text/html; charset=UTF-8".into());
             header_response.redirects.push(Redirect::from(
