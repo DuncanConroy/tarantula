@@ -117,6 +117,7 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
     let task_context_uuid = page_crawl_command.get_task_context().lock().unwrap().get_uuid_clone();
     let page_response = page_crawl_command.crawl(http_client, task_context_uuid, robots_txt_info_url).await;
     if let Ok(page_response_result) = page_response {
+        println!("PageResponse: {:?}", page_response_result);
         if let Some(crawl_result) = page_response_result {
             consume_crawl_result(&response_channel, &page_crawl_command, &tx, crawl_result).await
         } else {
