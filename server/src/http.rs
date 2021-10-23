@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use hyper::{Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use rocket::{State, tokio};
+use rocket::{Build, Rocket, State, tokio};
 use rocket::response::status;
 use rocket::serde::json::Json;
 use rocket::tokio::sync::mpsc;
@@ -14,6 +14,12 @@ use page_loader::page_loader_service::PageLoaderServiceCommand;
 use page_loader::page_loader_service::PageLoaderServiceCommand::CrawlDomainCommand;
 use responses::complete_response::CompleteResponse;
 use responses::run_config::RunConfig;
+
+pub fn rocket(page_loader_tx_channel: Sender<PageLoaderServiceCommand>) -> Rocket<Build> {
+    rocket::build()
+        .mount("/", routes![crawl])
+        .manage(page_loader_tx_channel)
+}
 
 #[put("/crawl", data = "<run_config>")]
 pub fn crawl(run_config: Json<RunConfig>, page_loader_tx_channel: &State<Sender<PageLoaderServiceCommand>>) -> status::Accepted<String> {
