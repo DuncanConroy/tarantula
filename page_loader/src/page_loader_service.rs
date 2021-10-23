@@ -160,7 +160,7 @@ async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_craw
     response_channel.send(PageEvent { page_response: crawl_result }).await.expect("Could not send result to response channel")
 }
 
-fn prepare_load_command(response_channel: &Sender<CrawlerEvent>, page_crawl_command: &&Box<dyn CrawlCommand>, task_context: Arc<Mutex<dyn FullTaskContext>>, link: &Link) -> (String, PageLoaderServiceCommand) {
+fn prepare_load_command(response_channel: &Sender<CrawlerEvent>, page_crawl_command: &Box<dyn CrawlCommand>, task_context: Arc<Mutex<dyn FullTaskContext>>, link: &Link) -> (String, PageLoaderServiceCommand) {
     let request = page_crawl_command.get_page_request();
     let protocol = request.lock().unwrap().get_protocol();
     let host = request.lock().unwrap().get_host();
