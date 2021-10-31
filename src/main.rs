@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate rocket;
 
 use std::fs::File;
@@ -6,10 +5,8 @@ use std::io::Write;
 use std::process;
 
 use log::info;
-use rocket::{Build, Rocket};
 
 use page_loader::page_loader_service::PageLoaderService;
-use server::http::crawl;
 
 // A simple type alias so as to DRY.
 pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
