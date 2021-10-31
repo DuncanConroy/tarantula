@@ -226,6 +226,7 @@ impl fmt::Debug for PageLoaderServiceCommand {
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
+    use hyper::Error;
     use uuid::Uuid;
 
     use responses::link::Link;
@@ -262,7 +263,7 @@ mod tests {
         }
 
         #[allow(unused_variables)] // allowing, as we don't use http_client in this stub
-        async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> std::result::Result<Option<PageResponse>, String> {
+        async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> std::result::Result<Option<PageResponse>, Error> {
             let mut response = PageResponse::new(self.url.clone(), self.url.clone(), Uuid::new_v4());
             if !self.url.starts_with("https://example.com/inner") {
                 // if this is the initial crawl, we want to emulate additional links`

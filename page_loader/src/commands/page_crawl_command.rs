@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use hyper::Error;
 use hyper::header::CONTENT_TYPE;
 use log::debug;
 use uuid::Uuid;
@@ -10,12 +11,11 @@ use uuid::Uuid;
 use dom_parser::DomParser;
 use responses::crawl_status::CrawlStatus;
 use responses::get_response::GetResponse;
-use responses::head_response::HeadResponse;
 use responses::link::Link;
 use responses::page_response::PageResponse;
 use responses::status_code::StatusCode;
 
-use crate::commands::fetch_header_command::FetchHeaderCommand;
+use crate::commands::fetch_header_command::{FetchHeaderCommand, HeadResponseResult};
 use crate::commands::page_download_command::PageDownloadCommand;
 use crate::http::http_client::HttpClient;
 use crate::page_request::PageRequest;
@@ -25,7 +25,7 @@ use crate::task_context::task_context::FullTaskContext;
 pub trait CrawlCommand: Sync + Send {
     fn get_url_clone(&self) -> String;
     fn get_page_request(&self) -> Arc<Mutex<PageRequest>>;
-    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String>;
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, Error>;
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
 }
@@ -84,7 +84,7 @@ impl PageCrawlCommand {
         Crawlability::Crawlable
     }
 
-    async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String> {
+    async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, Error> {
         let request_object_cloned = self.request_object.clone();
         let url = request_object_cloned.lock().unwrap().url.clone();
         let raw_url = request_object_cloned.lock().unwrap().raw_url.clone();
@@ -99,7 +99,7 @@ impl PageCrawlCommand {
         Ok(Some(page_response))
     }
 
-    async fn consume_fetch_header_response(&self, robots_txt_info_url: Option<String>, request_object: Arc<Mutex<PageRequest>>, mut page_response: PageResponse, fetch_header_response: Result<(HeadResponse, Arc<dyn HttpClient>), String>) -> PageResponse {
+    async fn consume_fetch_header_response(&self, robots_txt_info_url: Option<String>, request_object: Arc<Mutex<PageRequest>>, mut page_response: PageResponse, fetch_header_response: HeadResponseResult) -> PageResponse {
         if let Ok(result) = fetch_header_response {
             let http_client = result.1;
             let fetch_header_response = result.0;
@@ -114,12 +114,14 @@ impl PageCrawlCommand {
 
             let page_download_response = self.page_download_command.download_page(final_uri.clone(), http_client, robots_txt_info_url.clone()).await;
             page_response = self.consume_page_download_response(request_object, page_response, page_download_response);
+        } else {
+            page_response.crawl_status = Some(CrawlStatus::ConnectionError(fetch_header_response.err().unwrap().to_string()));
         }
 
         page_response
     }
 
-    fn consume_page_download_response(&self, request_object: Arc<Mutex<PageRequest>>, mut page_response: PageResponse, page_download_response: Result<GetResponse, String>) -> PageResponse{
+    fn consume_page_download_response(&self, request_object: Arc<Mutex<PageRequest>>, mut page_response: PageResponse, page_download_response: Result<GetResponse, String>) -> PageResponse {
         if let Ok(download_result) = page_download_response {
             if self.is_html(&download_result.headers) {
                 let request_object_locked = request_object.lock().unwrap();
@@ -172,7 +174,7 @@ impl CrawlCommand for PageCrawlCommand {
 
     fn get_page_request(&self) -> Arc<Mutex<PageRequest>> { self.request_object.clone() }
 
-    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, String> {
+    async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, Error> {
         let status: Option<CrawlStatus>;
 
         match self.verify_crawlability() {
@@ -218,7 +220,7 @@ mod tests {
     use responses::head_response::HeadResponse;
     use responses::redirect::Redirect;
 
-    use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
+    use crate::commands::page_crawl_command::{CrawlCommand, HeadResponseResult, PageCrawlCommand};
     use crate::events::crawler_event::CrawlerEvent;
     use crate::task_context::robots_service::RobotsTxt;
     use crate::task_context::task_context::{KnownLinks, TaskConfig, TaskContext, TaskContextServices};
@@ -270,7 +272,7 @@ mod tests {
         MyFetchHeaderCommand {}
         #[async_trait]
         impl FetchHeaderCommand for MyFetchHeaderCommand{
-            async fn fetch_header(&self, url: String, ignore_redirects:bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> std::result::Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+            async fn fetch_header(&self, url: String, ignore_redirects:bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> HeadResponseResult;
         }
     }
     mock! {
@@ -706,5 +708,47 @@ mod tests {
         assert_eq!(crawl_result_unwrapped.head.is_none(), true, "Should not have head, if maxDepth is reached");
         assert_eq!(crawl_result_unwrapped.response_timings.start_time.is_some(), true, "Should have start_time, if maxDepth is reached");
         assert_eq!(crawl_result_unwrapped.response_timings.end_time.is_some(), true, "Should have end_time, if maxDepth is reached");
+    }
+
+    #[tokio::test]
+    async fn unreachable_domains_return_error_message_in_proper_response() {
+        // given: a task context that allows crawl
+        let domain = "unreachable-domain.no";
+        let url = format!("https://{}", domain);
+        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new(domain))));
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_uri_service().return_const(uri_service.clone());
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = get_default_task_config();
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_can_access().returning(|_| true);
+        let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Err(String::from("Some nasty shit happened.")));
+        let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
+
+        // when: invoked with a regular link
+        let page_crawl_command = PageCrawlCommand::new(
+            url.clone(),
+            url.clone(),
+            Arc::new(Mutex::new(mock_task_context)),
+            0,
+            mock_fetch_header_command,
+            mock_page_download_command,
+        );
+        assert_eq!(page_crawl_command.verify_crawlability(), Crawlability::Crawlable, "verify_crawlability should return Crawlable");
+        let mock_http_client = get_mock_http_client();
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
+        println!("{:?}", crawl_result);
+
+        // then: expect some PageResponse with valid ResponseTimings
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should have a crawl result");
+        let crawl_result_unwrapped = crawl_result.unwrap().unwrap();
+        assert_eq!(crawl_result_unwrapped.get.is_none(), true, "Should not have get response, even if error occurred");
+        assert_eq!(crawl_result_unwrapped.head.is_none(), true, "Should not have head, even if error occurred");
+        assert_eq!(crawl_result_unwrapped.response_timings.start_time.is_some(), true, "Should have start_time, even if error occurred");
+        assert_eq!(crawl_result_unwrapped.response_timings.end_time.is_some(), true, "Should have end_time, even if error occurred");
+        assert_eq!(crawl_result_unwrapped.crawl_status.is_some(), true, "Should have crawl_status, if error occurred");
+        assert_eq!(crawl_result_unwrapped.crawl_status.unwrap(), CrawlStatus::ConnectionError(String::from("Some nasty shit happened.")), "Should have crawl_status == ConnectionError, if error occurred");
     }
 }
