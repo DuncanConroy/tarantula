@@ -17,16 +17,18 @@ use responses::status_code::StatusCode;
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;
 
+pub type HeadResponseResult = Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+
 #[async_trait]
 pub trait FetchHeaderCommand: Sync + Send {
-    async fn fetch_header(&self, url: String, ignore_redirects: bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String>;
+    async fn fetch_header(&self, url: String, ignore_redirects: bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> HeadResponseResult;
 }
 
 pub struct DefaultFetchHeaderCommand {}
 
 #[async_trait]
 impl FetchHeaderCommand for DefaultFetchHeaderCommand {
-    async fn fetch_header(&self, url: String, ignore_redirects: bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> Result<(HeadResponse, Arc<dyn HttpClient>), String> {
+    async fn fetch_header(&self, url: String, ignore_redirects: bool, maximum_redirects: u8, uri_service: Arc<UriService>, http_client: Arc<dyn HttpClient>, redirects: Option<Vec<Redirect>>, robots_txt_info_url: Option<String>) -> HeadResponseResult {
         let start_time = DateTime::from(Utc::now());
         let mut uri = url.clone();
 
@@ -37,7 +39,11 @@ impl FetchHeaderCommand for DefaultFetchHeaderCommand {
             uri = redirects_unwrapped.last().unwrap().destination.clone();
         }
 
-        let response = http_client.head(uri.clone(), robots_txt_info_url.clone()).await.unwrap();
+        let response = http_client.head(uri.clone(), robots_txt_info_url.clone()).await;
+        if response.is_err() {
+            return Err(response.unwrap_err().to_string());
+        }
+        let response = response.unwrap();
         trace!("HEAD for {}: {:?}", uri, response.headers());
         let headers: HashMap<String, String> = http_utils::response_headers_to_map(&response);
         let can_process_redirects = !ignore_redirects && num_redirects < maximum_redirects && response.status().is_redirection();
