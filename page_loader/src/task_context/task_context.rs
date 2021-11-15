@@ -170,7 +170,7 @@ impl TaskConfig {
             keep_html_in_memory: run_config.keep_html_in_memory.unwrap_or_else(|| false),
             user_agent: run_config.user_agent.unwrap_or_else(|| String::from("tarantula")),
             robots_txt_info_url: run_config.robots_txt_info_url,
-            crawl_delay_ms: run_config.crawl_delay_ms.unwrap_or_else(|| 10_000),
+            crawl_delay_ms: run_config.crawl_delay_ms.unwrap_or_else(|| 500),
         }
     }
 }
