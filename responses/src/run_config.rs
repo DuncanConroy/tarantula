@@ -28,7 +28,7 @@ impl RunConfig {
             robots_txt_info_url: None,
             callback_url,
             callback_url_finished: None,
-            crawl_delay_ms: Some(10_000),
+            crawl_delay_ms: Some(500),
         }
     }
 }
