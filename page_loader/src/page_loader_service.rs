@@ -4,7 +4,7 @@ use std::cmp::max;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
 
-use log::{debug, error};
+use log::{debug, error, warn};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -117,7 +117,6 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
     let task_context_uuid = page_crawl_command.get_task_context().lock().unwrap().get_uuid_clone();
     let page_response = page_crawl_command.crawl(http_client, task_context_uuid, robots_txt_info_url).await;
     if let Ok(page_response_result) = page_response {
-        println!("PageResponse: {:?}", page_response_result);
         if let Some(crawl_result) = page_response_result {
             consume_crawl_result(&response_channel, &page_crawl_command, &tx, crawl_result).await
         } else {
@@ -136,28 +135,39 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
 async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_crawl_command: &Box<dyn CrawlCommand>, tx: &Sender<PageLoaderServiceCommand>, crawl_result: PageResponse) {
     let task_context = page_crawl_command.get_task_context();
     add_links_to_known_list(&mut page_crawl_command.get_task_context().lock().unwrap()
-        .get_all_known_links().lock().unwrap(), &crawl_result);
+        .get_all_crawled_links().lock().unwrap(), &crawl_result);
     let links = crawl_result.borrow().links.clone();
-    if links.is_some() {
+    let max_crawl_depth = task_context.lock().unwrap().get_config().lock().unwrap().maximum_depth;
+    if links.is_some() && page_crawl_command.get_current_depth() <= max_crawl_depth {
         let mut links_deduped = links.unwrap();
         links_deduped.dedup_by(|a, b| a.uri.eq(&b.uri));
+        let mut all_tasked_links = task_context.lock().unwrap().get_all_tasked_links().lock().unwrap().clone();
+        let mut all_crawled_and_tasked_links = task_context.lock().unwrap().get_all_crawled_links().lock().unwrap().clone();
+        all_crawled_and_tasked_links.append(&mut all_tasked_links);
+        all_crawled_and_tasked_links.dedup();
+        links_deduped.retain(|it| it.scope.is_some());
         for link in links_deduped {
-            // todo!("TEST")
-            if link.scope.is_none() { continue; }
-
             match link.scope.as_ref().unwrap() {
                 UriScope::Root |
                 UriScope::SameDomain |
                 UriScope::DifferentSubDomain => {
                     let (url, load_page_command) = prepare_load_command(response_channel, &page_crawl_command, task_context.clone(), &link);
 
-                    tx.send(load_page_command).await.expect(&format!("Issue sending LoadPage command to tx: {:?}", url.clone()));
+                    if !all_crawled_and_tasked_links.contains(&url) {
+                        tx.send(load_page_command).await.expect(&format!("Issue sending LoadPage command to tx: {:?}", url.clone()));
+                    }
                 }
                 _ => { continue; }
             }
         }
     }
-    response_channel.send(PageEvent { page_response: crawl_result }).await.expect("Could not send result to response channel")
+    let send_result = response_channel.send(PageEvent { page_response: crawl_result }).await;
+    if send_result.is_err() {
+        warn!("Couldn't send PageResponse for PageCrawlCommand id {}", page_crawl_command.get_uuid_clone());
+    } else {
+        debug!("all_known_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_crawled_links().lock().unwrap().len());
+        debug!("all_tasked_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_tasked_links().lock().unwrap().len());
+    }
 }
 
 fn prepare_load_command(response_channel: &Sender<CrawlerEvent>, page_crawl_command: &Box<dyn CrawlCommand>, task_context: Arc<Mutex<dyn FullTaskContext>>, link: &Link) -> (String, PageLoaderServiceCommand) {
@@ -242,13 +252,14 @@ mod tests {
         url: String,
         task_context: Arc<Mutex<dyn FullTaskContext>>,
         page_request: Arc<Mutex<PageRequest>>,
+        uuid: Uuid,
     }
 
     impl StubPageCrawlCommand {
         fn new(url: String, response_channel: Sender<CrawlerEvent>) -> StubPageCrawlCommand {
             let task_context = create_default_task_context(response_channel);
             let page_request = Arc::new(Mutex::new(PageRequest::new(url.clone(), url.clone(), None, task_context.clone())));
-            StubPageCrawlCommand { url, task_context, page_request }
+            StubPageCrawlCommand { url, task_context, page_request, uuid: Uuid::new_v4() }
         }
     }
 
@@ -257,6 +268,8 @@ mod tests {
         fn get_url_clone(&self) -> String {
             self.url.clone()
         }
+
+        fn get_uuid_clone(&self) -> Uuid { self.uuid.clone() }
 
         fn get_page_request(&self) -> Arc<Mutex<PageRequest>> {
             self.page_request.clone()

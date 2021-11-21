@@ -28,11 +28,13 @@ pub trait CrawlCommand: Sync + Send {
     async fn crawl(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, Error>;
     fn get_task_context(&self) -> Arc<Mutex<dyn FullTaskContext>>;
     fn get_current_depth(&self) -> u16;
+    fn get_uuid_clone(&self) -> Uuid;
 }
 
 #[derive(Debug, PartialEq)]
 enum Crawlability {
     AlreadyKnown,
+    AlreadyTasked,
     Crawlable,
     RestrictedByRobotsTxt,
     MaxDepthReached,
@@ -43,6 +45,7 @@ pub struct PageCrawlCommand {
     pub current_depth: u16,
     fetch_header_command: Box<dyn FetchHeaderCommand>,
     page_download_command: Box<dyn PageDownloadCommand>,
+    uuid: Uuid,
 }
 
 impl PageCrawlCommand {
@@ -52,6 +55,7 @@ impl PageCrawlCommand {
             current_depth,
             fetch_header_command,
             page_download_command,
+            uuid: Uuid::new_v4(),
         }
     }
 
@@ -71,9 +75,14 @@ impl PageCrawlCommand {
         drop(config_locked);
         drop(config);
 
-        if task_context_locked.get_all_known_links().lock().unwrap().contains(&request_object_locked.url) {
+        if task_context_locked.get_all_crawled_links().lock().unwrap().contains(&request_object_locked.url) {
             debug!("Dropping requested url: {} -> already known", &request_object_locked.url);
             return Crawlability::AlreadyKnown;
+        }
+
+        if task_context_locked.get_all_tasked_links().lock().unwrap().contains(&request_object_locked.url) {
+            debug!("Dropping requested url: {} -> already tasked", &request_object_locked.url);
+            return Crawlability::AlreadyTasked;
         }
 
         if !task_context_locked.can_access(&request_object_locked.url) {
@@ -87,6 +96,7 @@ impl PageCrawlCommand {
     async fn perform_crawl_internal(&self, http_client: Arc<dyn HttpClient>, task_context_uuid: Uuid, robots_txt_info_url: Option<String>) -> Result<Option<PageResponse>, Error> {
         let request_object_cloned = self.request_object.clone();
         let url = request_object_cloned.lock().unwrap().url.clone();
+        request_object_cloned.lock().unwrap().task_context.lock().unwrap().get_all_tasked_links().lock().unwrap().push(url.clone());
         let raw_url = request_object_cloned.lock().unwrap().raw_url.clone();
         let mut page_response = PageResponse::new(url.clone(), raw_url, task_context_uuid.clone());
         let maximum_redirects = request_object_cloned.lock().unwrap().task_context.lock().unwrap().get_config().lock().unwrap().maximum_redirects;
@@ -178,7 +188,7 @@ impl CrawlCommand for PageCrawlCommand {
         let status: Option<CrawlStatus>;
 
         match self.verify_crawlability() {
-            Crawlability::AlreadyKnown => return Ok(None),
+            Crawlability::AlreadyKnown | Crawlability::AlreadyTasked => return Ok(None),
             Crawlability::Crawlable => return self.perform_crawl_internal(http_client, task_context_uuid, robots_txt_info_url).await,
             Crawlability::RestrictedByRobotsTxt => status = Some(CrawlStatus::RestrictedByRobotsTxt),
             Crawlability::MaxDepthReached => status = Some(CrawlStatus::MaximumCrawlDepthReached),
@@ -198,6 +208,8 @@ impl CrawlCommand for PageCrawlCommand {
     }
 
     fn get_current_depth(&self) -> u16 { self.current_depth }
+
+    fn get_uuid_clone(&self) -> Uuid { self.uuid.clone() }
 }
 
 #[cfg(test)]
@@ -244,8 +256,9 @@ mod tests {
             fn get_http_client(&self) -> Arc<dyn HttpClient>;
         }
         impl KnownLinks for MyTaskContext{
-            fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
-            fn add_known_link(&self, link: String);
+            fn get_all_crawled_links(&self) -> Arc<Mutex<Vec<String>>>;
+            fn get_all_tasked_links(&self) -> Arc<Mutex<Vec<String>>>;
+            fn add_crawled_link(&self, link: String);
         }
         impl RobotsTxt for MyTaskContext{
             fn can_access(&self, item_uri: &str) -> bool;
@@ -342,7 +355,8 @@ mod tests {
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_uri_service().return_const(uri_service.clone());
         mock_task_context.expect_get_url().return_const(url.clone());
-        mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().return_const(Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().return_const(Arc::new(Mutex::new(vec![])));
         let config = get_default_task_config();
         config.lock().unwrap().maximum_depth = 0;
         mock_task_context.expect_get_config().return_const(config.clone());
@@ -373,14 +387,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn will_not_crawl_if_url_is_known() {
+    async fn will_not_crawl_if_url_is_crawled() {
         // given: a task context with a known link
         let url = String::from("https://example.com");
         let mut mock_task_context = MockMyTaskContext::new();
         mock_task_context.expect_get_url().return_const(url.clone());
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
+        mock_task_context.expect_get_all_crawled_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
         let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
@@ -400,7 +414,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn will_crawl_if_url_is_unknown() {
+    async fn will_crawl_if_url_is_uncrawled() {
         // given: a task context without the link known
         let url = String::from("https://example.com");
         let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new("example.com"))));
@@ -409,7 +423,8 @@ mod tests {
         mock_task_context.expect_get_url().return_const(url.clone());
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
@@ -437,6 +452,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn will_not_crawl_if_url_is_tasked() {
+        // given: a task context with a known link
+        let url = String::from("https://example.com");
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = get_default_task_config();
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_crawled_links().return_const(Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
+        let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
+
+        // when: invoked with a known link
+        let page_crawl_command = PageCrawlCommand::new(
+            url.clone(),
+            url.clone(),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command,
+            mock_page_download_command);
+        let mock_http_client = get_mock_http_client();
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
+
+        // then: expect none
+        assert_eq!(crawl_result.as_ref().unwrap().is_none(), true, "Should have no result, if url is tasked");
+    }
+
+    #[tokio::test]
+    async fn will_crawl_if_url_is_untasked() {
+        // given: a task context without the link known
+        let url = String::from("https://example.com");
+        let uri_service = Arc::new(UriService::new(Arc::new(LinkTypeChecker::new("example.com"))));
+        let mut mock_task_context = MockMyTaskContext::new();
+        mock_task_context.expect_get_uri_service().return_const(uri_service.clone());
+        mock_task_context.expect_get_url().return_const(url.clone());
+        let config = get_default_task_config();
+        mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        let all_tasked_links = Arc::new(Mutex::new(vec![]));
+        mock_task_context.expect_get_all_tasked_links().return_const(all_tasked_links.clone());
+        mock_task_context.expect_can_access().returning(|_| true);
+        let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
+        mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
+        let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
+        let mut mock_http_client = MockMyHttpClient::new();
+        mock_http_client.expect_head().returning(|_, _| Ok(Response::builder()
+            .status(200)
+            .body(Body::from(""))
+            .unwrap()));
+        let mock_http_client = Arc::new(mock_http_client);
+
+        // when: invoked with an untasked link
+        let page_crawl_command = PageCrawlCommand::new(
+            String::from("https://example.com"),
+            String::from("https://example.com"),
+            Arc::new(Mutex::new(mock_task_context)),
+            1,
+            mock_fetch_header_command,
+            mock_page_download_command);
+        let crawl_result = page_crawl_command.crawl(mock_http_client, Uuid::new_v4(), None).await;
+
+        // then: expect some
+        assert_eq!(crawl_result.as_ref().unwrap().is_some(), true, "Should crawl, if url is untasked");
+        assert_eq!(crawl_result.as_ref().unwrap().as_ref().unwrap().response_timings.end_time.is_some(), true, "Should have end_time, regardless of status code");
+        assert_eq!(page_crawl_command.get_task_context().as_ref().lock().unwrap()
+                       .get_all_tasked_links().as_ref().lock().unwrap()
+                       .contains(&String::from("https://example.com")), true, "Url should now be tasked");
+    }
+
+    #[tokio::test]
     async fn will_not_crawl_if_url_is_forbidden_by_robots_txt() {
         // given: a task context with robots_txt disallowing crawling
         let url = String::from("https://example.com");
@@ -444,7 +529,8 @@ mod tests {
         mock_task_context.expect_get_url().return_const(url.clone());
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| false);
         let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
@@ -478,7 +564,8 @@ mod tests {
         mock_task_context.expect_get_url().return_const(url.clone());
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
@@ -514,7 +601,8 @@ mod tests {
         mock_task_context.expect_get_url().return_const(url.clone());
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16(), label: hyper::StatusCode::INTERNAL_SERVER_ERROR.canonical_reason().unwrap().into() }), get_mock_http_client())));
@@ -557,7 +645,8 @@ mod tests {
         mock_task_context.expect_get_url().return_const(url.clone());
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| {
@@ -599,7 +688,8 @@ mod tests {
         let config = get_default_task_config();
 
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         mock_task_context.expect_get_dom_parser().returning(|| {
             let mut dom_parser = MockMyDomParser::new();
@@ -681,7 +771,7 @@ mod tests {
         let config = get_default_task_config();
         config.lock().unwrap().maximum_depth = 1;
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() }), get_mock_http_client())));
@@ -721,7 +811,8 @@ mod tests {
         mock_task_context.expect_get_url().return_const(url.clone());
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
-        mock_task_context.expect_get_all_known_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
+        mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Err(String::from("Some nasty shit happened.")));
