@@ -38,8 +38,9 @@ pub trait TaskContextServices: Sync + Send {
 }
 
 pub trait KnownLinks: Sync + Send {
-    fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>>;
-    fn add_known_link(&self, link: String);
+    fn get_all_crawled_links(&self) -> Arc<Mutex<Vec<String>>>;
+    fn get_all_tasked_links(&self) -> Arc<Mutex<Vec<String>>>;
+    fn add_crawled_link(&self, link: String);
 }
 
 pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + RobotsTxt {}
@@ -53,7 +54,8 @@ pub struct DefaultTaskContext {
     http_client: Arc<dyn HttpClient>,
     uuid: Uuid,
     last_command_received: Instant,
-    all_known_links: Arc<Mutex<Vec<String>>>,
+    all_crawled_links: Arc<Mutex<Vec<String>>>,
+    all_tasked_links: Arc<Mutex<Vec<String>>>,
     response_channel: Sender<CrawlerEvent>,
 }
 
@@ -68,7 +70,8 @@ impl TaskContextInit for DefaultTaskContext {
         let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         let robots_service = Arc::new(RobotsService::new(user_agent.clone()));
         let http_client = Arc::new(HttpClientImpl::new(user_agent.clone(), crawl_delay_ms.clone()));
-        let all_known_links = Arc::new(Mutex::new(vec![]));
+        let all_crawled_links = Arc::new(Mutex::new(vec![]));
+        let all_tasked_links = Arc::new(Mutex::new(vec![]));
         let last_command_received = Instant::now();
         DefaultTaskContext {
             task_config,
@@ -78,7 +81,8 @@ impl TaskContextInit for DefaultTaskContext {
             http_client,
             uuid,
             last_command_received,
-            all_known_links,
+            all_crawled_links,
+            all_tasked_links,
             response_channel,
         }
     }
@@ -123,12 +127,16 @@ impl TaskContextServices for DefaultTaskContext {
 }
 
 impl KnownLinks for DefaultTaskContext {
-    fn get_all_known_links(&self) -> Arc<Mutex<Vec<String>>> {
-        self.all_known_links.clone()
+    fn get_all_crawled_links(&self) -> Arc<Mutex<Vec<String>>> {
+        self.all_crawled_links.clone()
     }
 
-    fn add_known_link(&self, link: String) {
-        self.all_known_links.lock().unwrap().push(link);
+    fn get_all_tasked_links(&self) -> Arc<Mutex<Vec<String>>> {
+        self.all_tasked_links.clone()
+    }
+
+    fn add_crawled_link(&self, link: String) {
+        self.all_crawled_links.lock().unwrap().push(link);
     }
 }
 
