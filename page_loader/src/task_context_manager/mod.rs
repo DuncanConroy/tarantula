@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use log::{debug, error};
+use log::{debug, error, info};
 
 use crate::events::crawler_event::CrawlerEvent;
 use crate::task_context::task_context::TaskContext;
@@ -59,6 +59,7 @@ impl DefaultTaskManager {
     }
 
     fn do_garbage_collection(&mut self) {
+        info!("Active tasks: {}", self.tasks.lock().unwrap().len());
         let mut to_gc = vec![];
         for (key, value) in self.tasks.lock().unwrap().iter() {
             if value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) {

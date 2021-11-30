@@ -163,7 +163,7 @@ async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_craw
     }
     let send_result = response_channel.send(PageEvent { page_response: crawl_result }).await;
     if send_result.is_err() {
-        warn!("Couldn't send PageResponse for PageCrawlCommand id {}: {:?}", page_crawl_command.get_uuid_clone(), send_result);
+        warn!("Couldn't send PageResponse for PageCrawlCommand id {}", page_crawl_command.get_uuid_clone());
     } else {
         debug!("all_known_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_crawled_links().lock().unwrap().len());
         debug!("all_tasked_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_tasked_links().lock().unwrap().len());

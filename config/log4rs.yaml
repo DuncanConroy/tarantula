@@ -13,11 +13,16 @@ appenders:
     encoder:
       pattern: "{d} - {m}{n}"
 
+  logfile:
+    kind: file
+    path: "log/tarantula.log"
+
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
   level: info
   appenders:
     - stdout
+    - logfile
 
 loggers:
   # Raise the maximum log level for events sent to the "app::backend::db" logger to "info"
@@ -30,7 +35,7 @@ loggers:
 
   # Route log events sent to the "app::requests" logger to the "requests" appender,
   # and *not* the normal appenders installed at the root
-  app::requests:
+  server::http:
     level: info
     appenders:
       - requests
