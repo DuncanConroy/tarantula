@@ -35,6 +35,7 @@ deploy_latest:
     - mv deploy.sh tarantula/deploy.sh
     - mv target/release/tarantula tarantula/
     - scp -P 21109 -r tarantula tarantula@***REMOVED***:~
+    - scp -P 21109 -r config tarantula@***REMOVED***:~
     - ssh -p 21109 tarantula@***REMOVED*** 'cd tarantula; ./deploy.sh'
   artifacts:
     paths:
