@@ -49,7 +49,7 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
             match event {
                 CrawlerEvent::PageEvent { page_response } => {
                     let page_response_json = rocket::serde::json::serde_json::to_string(&page_response).unwrap();
-                    info!("Received from threads - PageEvent: {:?}", page_response);
+                    info!("Received from threads - PageEvent: {:?}, numLinks: {}", page_response.final_url_after_redirects.as_ref(), page_response.links.as_ref().unwrap_or(&vec![]).len());
                     responses = responses + 1;
                     info!(". -> {}", responses);
 
