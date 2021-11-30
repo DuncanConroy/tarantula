@@ -14,9 +14,10 @@ pub trait TaskManager: Sync + Send {
     fn get_number_of_tasks(&self) -> usize;
 }
 
+type TaskMap = HashMap<String, Arc<Mutex<dyn TaskContext>>>;
 pub struct DefaultTaskManager {
     // URL - TaskContext
-    tasks: Arc<Mutex<HashMap<String, Arc<Mutex<dyn TaskContext>>>>>,
+    tasks: Arc<Mutex<TaskMap>>,
     // garbage collection timeout in seconds
     gc_timeout_ms: u64,
 }
@@ -60,6 +61,7 @@ impl DefaultTaskManager {
 
     fn do_garbage_collection(&mut self) {
         info!("Active tasks: {}", self.tasks.lock().unwrap().len());
+        info!("Active tasks uuids: {:?}", self.tasks.lock().unwrap().keys());
         let mut to_gc = vec![];
         for (key, value) in self.tasks.lock().unwrap().iter() {
             if value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) {
@@ -73,11 +75,12 @@ impl DefaultTaskManager {
             }
         }
 
-        to_gc.iter().for_each(|key|
+        to_gc.iter().for_each(|key| {
+            info!("Removing task with id {}", key);
             debug!("Strong pointers to task {} before gc: {}",
                 key,
                 Arc::strong_count(&self.tasks.lock().unwrap()[key])
-            ));
+            )});
         self.tasks.lock().unwrap().retain(|key, _| !to_gc.contains(key));
     }
 }
