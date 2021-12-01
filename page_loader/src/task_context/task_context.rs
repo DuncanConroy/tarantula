@@ -106,7 +106,8 @@ impl TaskContext for DefaultTaskContext {
     }
 
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool {
-        return if Instant::now() - self.last_command_received > Duration::from_millis(self.task_config.lock().unwrap().crawl_delay_ms as u64 + gc_timeout_ms) {
+        let now = Instant::now();
+        return if self.last_command_received < now && now - self.last_command_received > Duration::from_millis(self.task_config.lock().unwrap().crawl_delay_ms as u64 + gc_timeout_ms) {
             true
         } else {
             false
