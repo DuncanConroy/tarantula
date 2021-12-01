@@ -93,6 +93,20 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
     info!("Finished crawl.");
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn on_received_event_task_context_last_command_received_is_updated() {
+        // given:
+        todo!("write a test");
+        // when:
+
+        // then: last_command_received is updated on the task_context
+    }
+}
+
 // use rocket_contrib::json::{Json, JsonError};
 // use rocket_contrib::json::JsonValue;
 //
