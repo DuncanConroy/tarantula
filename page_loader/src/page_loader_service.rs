@@ -161,6 +161,7 @@ async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_craw
             }
         }
     }
+    task_context.lock().unwrap().set_last_command_received(Instant::now());
     let send_result = response_channel.send(PageEvent { page_response: crawl_result }).await;
     if send_result.is_err() {
         warn!("Couldn't send PageResponse for TaskContext {}, PageCrawlCommand id {}, requested_url: {}", page_crawl_command.get_task_context().as_ref().lock().unwrap().get_uuid_clone(),
