@@ -43,7 +43,12 @@ pub trait KnownLinks: Sync + Send {
     fn add_crawled_link(&self, link: String);
 }
 
-pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + RobotsTxt {}
+pub trait Registrar: Sync+Send{
+    fn register_crawl_command(&self, uuid:Uuid);
+    fn unregister_crawl_command(&self, uuid:Uuid);
+}
+
+pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + RobotsTxt +Registrar{}
 
 #[derive(Clone)]
 pub struct DefaultTaskContext {
@@ -57,6 +62,7 @@ pub struct DefaultTaskContext {
     all_crawled_links: Arc<Mutex<Vec<String>>>,
     all_tasked_links: Arc<Mutex<Vec<String>>>,
     response_channel: Sender<CrawlerEvent>,
+    crawl_commands: Arc<Mutex<Vec<Uuid>>>,
 }
 
 impl TaskContextInit for DefaultTaskContext {
@@ -70,9 +76,6 @@ impl TaskContextInit for DefaultTaskContext {
         let uri_service = Arc::new(UriService::new(link_type_checker.clone()));
         let robots_service = Arc::new(RobotsService::new(user_agent.clone()));
         let http_client = Arc::new(HttpClientImpl::new(user_agent.clone(), crawl_delay_ms.clone()));
-        let all_crawled_links = Arc::new(Mutex::new(vec![]));
-        let all_tasked_links = Arc::new(Mutex::new(vec![]));
-        let last_command_received = Instant::now();
         DefaultTaskContext {
             task_config,
             dom_parser,
@@ -80,10 +83,11 @@ impl TaskContextInit for DefaultTaskContext {
             robots_service,
             http_client,
             uuid,
-            last_command_received,
-            all_crawled_links,
-            all_tasked_links,
+            last_command_received: Instant::now(),
+            all_crawled_links:Arc::new(Mutex::new(vec![])),
+            all_tasked_links:Arc::new(Mutex::new(vec![])),
             response_channel,
+            crawl_commands: Arc::new(Mutex::new(vec![]))
         }
     }
 }
@@ -107,7 +111,9 @@ impl TaskContext for DefaultTaskContext {
 
     fn can_be_garbage_collected(&self, gc_timeout_ms: u64) -> bool {
         let now = Instant::now();
-        return if self.last_command_received < now && now - self.last_command_received > Duration::from_millis(self.task_config.lock().unwrap().crawl_delay_ms as u64 + gc_timeout_ms) {
+        return if self.crawl_commands.lock().unwrap().len() == 0
+            && self.last_command_received < now
+            && now - self.last_command_received > Duration::from_millis(self.task_config.lock().unwrap().crawl_delay_ms as u64 + gc_timeout_ms) {
             true
         } else {
             false
@@ -144,6 +150,18 @@ impl KnownLinks for DefaultTaskContext {
 impl RobotsTxt for DefaultTaskContext {
     fn can_access(&self, item_uri: &str) -> bool {
         self.robots_service.clone().can_access(item_uri)
+    }
+}
+
+impl Registrar for DefaultTaskContext {
+    fn register_crawl_command(&self, uuid: Uuid) {
+        self.crawl_commands.lock().unwrap().push(uuid);
+    }
+
+    fn unregister_crawl_command(&self, uuid: Uuid) {
+        if let Ok(index) = &self.crawl_commands.lock().unwrap().binary_search(&uuid) {
+            self.crawl_commands.lock().unwrap().swap_remove(*index);
+        }
     }
 }
 

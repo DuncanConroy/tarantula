@@ -124,6 +124,7 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
         }
     } else {
         // todo!("Proper error handling is required!");
+        page_crawl_command.get_task_context().lock().unwrap().unregister_crawl_command(page_crawl_command.get_uuid_clone());
         error!("No page response from http call");
     }
 
@@ -166,10 +167,10 @@ async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_craw
         warn!("Couldn't send PageResponse for TaskContext {}, PageCrawlCommand id {}, requested_url: {}", page_crawl_command.get_task_context().as_ref().lock().unwrap().get_uuid_clone(),
             page_crawl_command.get_uuid_clone(), page_crawl_command.get_url_clone());
     } else {
-        task_context.lock().unwrap().set_last_command_received(Instant::now());
         debug!("all_known_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_crawled_links().lock().unwrap().len());
         debug!("all_tasked_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_tasked_links().lock().unwrap().len());
     }
+    page_crawl_command.get_task_context().lock().unwrap().unregister_crawl_command(page_crawl_command.get_uuid_clone());
 }
 
 fn prepare_load_command(response_channel: &Sender<CrawlerEvent>, page_crawl_command: &Box<dyn CrawlCommand>, task_context: Arc<Mutex<dyn FullTaskContext>>, link: &Link) -> (String, PageLoaderServiceCommand) {
