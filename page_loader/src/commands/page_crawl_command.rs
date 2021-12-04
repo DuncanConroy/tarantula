@@ -50,13 +50,17 @@ pub struct PageCrawlCommand {
 
 impl PageCrawlCommand {
     pub fn new(url: String, raw_url: String, task_context: Arc<Mutex<dyn FullTaskContext>>, current_depth: u16, fetch_header_command: Box<dyn FetchHeaderCommand>, page_download_command: Box<dyn PageDownloadCommand>) -> PageCrawlCommand {
-        PageCrawlCommand {
-            request_object: Arc::new(Mutex::new(PageRequest::new(url, raw_url, None, task_context))),
+        let instance = PageCrawlCommand {
+            request_object: Arc::new(Mutex::new(PageRequest::new(url, raw_url, None, task_context.clone()))),
             current_depth,
             fetch_header_command,
             page_download_command,
             uuid: Uuid::new_v4(),
-        }
+        };
+
+        task_context.lock().unwrap().register_crawl_command(instance.uuid.clone());
+
+        instance
     }
 
     fn verify_crawlability(&self) -> Crawlability {
@@ -235,7 +239,7 @@ mod tests {
     use crate::commands::page_crawl_command::{CrawlCommand, HeadResponseResult, PageCrawlCommand};
     use crate::events::crawler_event::CrawlerEvent;
     use crate::task_context::robots_service::RobotsTxt;
-    use crate::task_context::task_context::{KnownLinks, TaskConfig, TaskContext, TaskContextServices};
+    use crate::task_context::task_context::*;
 
     use super::*;
 
@@ -262,6 +266,10 @@ mod tests {
         }
         impl RobotsTxt for MyTaskContext{
             fn can_access(&self, item_uri: &str) -> bool;
+        }
+        impl Registrar for MyTaskContext {
+            fn register_crawl_command(&self, uuid:Uuid);
+            fn unregister_crawl_command(&self, uuid:Uuid);
         }
         impl FullTaskContext for MyTaskContext{}
     }
@@ -325,6 +333,8 @@ mod tests {
         let config = get_default_task_config();
         config.lock().unwrap().maximum_depth = 1;
         mock_task_context.expect_get_config().return_const(config.clone());
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
@@ -361,6 +371,8 @@ mod tests {
         config.lock().unwrap().maximum_depth = 0;
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
@@ -395,6 +407,8 @@ mod tests {
         let config = get_default_task_config();
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_crawled_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
@@ -426,6 +440,8 @@ mod tests {
         mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
@@ -461,6 +477,8 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_crawled_links().return_const(Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_get_all_tasked_links().return_const(Arc::new(Mutex::new(vec![url.clone()])));
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
@@ -493,6 +511,8 @@ mod tests {
         let all_tasked_links = Arc::new(Mutex::new(vec![]));
         mock_task_context.expect_get_all_tasked_links().return_const(all_tasked_links.clone());
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
@@ -532,6 +552,8 @@ mod tests {
         mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| false);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
 
@@ -567,6 +589,8 @@ mod tests {
         mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::IM_A_TEAPOT.as_u16(), label: hyper::StatusCode::IM_A_TEAPOT.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
@@ -604,6 +628,8 @@ mod tests {
         mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::INTERNAL_SERVER_ERROR.as_u16(), label: hyper::StatusCode::INTERNAL_SERVER_ERROR.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
@@ -648,6 +674,8 @@ mod tests {
         mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| {
             let mut header_response = HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() });
@@ -696,6 +724,8 @@ mod tests {
             dom_parser.expect_get_links().returning(|_, _, _| None);
             Arc::new(dom_parser)
         });
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
 
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| {
@@ -773,6 +803,8 @@ mod tests {
         mock_task_context.expect_get_config().return_const(config.clone());
         mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Ok((HeadResponse::new(String::from("https://example.com"), StatusCode { code: hyper::StatusCode::OK.as_u16(), label: hyper::StatusCode::OK.canonical_reason().unwrap().into() }), get_mock_http_client())));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
@@ -814,6 +846,8 @@ mod tests {
         mock_task_context.expect_get_all_crawled_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_get_all_tasked_links().returning(|| Arc::new(Mutex::new(vec![])));
         mock_task_context.expect_can_access().returning(|_| true);
+        mock_task_context.expect_register_crawl_command().returning(|_| ());
+        mock_task_context.expect_unregister_crawl_command().returning(|_| ());
         let mut mock_fetch_header_command = Box::new(MockMyFetchHeaderCommand::new());
         mock_fetch_header_command.expect_fetch_header().returning(|_, _, _, _, _, _, _| Err(String::from("Some nasty shit happened.")));
         let mock_page_download_command = Box::new(MockMyPageDownloadCommand::new());
