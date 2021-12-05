@@ -108,10 +108,12 @@ impl PageLoaderService {
 }
 
 async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box<dyn CrawlCommand>, tx: Sender<PageLoaderServiceCommand>, robots_txt_info_url: Option<String>) {
+    let url = page_crawl_command.get_url_clone();
+    debug!("got url: {:?}", &url);
+
     // updated last_command_received for garbage collection handling
     page_crawl_command.get_task_context().lock().unwrap().set_last_command_received(Instant::now());
-    let url = page_crawl_command.get_url_clone();
-    debug!("got url: {:?}", url);
+    page_crawl_command.get_task_context().lock().unwrap().register_crawl_command(page_crawl_command.as_ref().get_uuid_clone(), url.clone());
 
     let http_client = page_crawl_command.get_task_context().lock().unwrap().get_http_client();
     let task_context_uuid = page_crawl_command.get_task_context().lock().unwrap().get_uuid();
@@ -274,8 +276,6 @@ mod tests {
             self.url.clone()
         }
 
-        fn get_uuid_clone(&self) -> Uuid { self.uuid.clone() }
-
         fn get_page_request(&self) -> Arc<Mutex<PageRequest>> {
             self.page_request.clone()
         }
@@ -306,6 +306,8 @@ mod tests {
         }
 
         fn get_current_depth(&self) -> u16 { 1 }
+
+        fn get_uuid_clone(&self) -> Uuid { self.uuid.clone() }
     }
 
     struct StubFactory;
@@ -370,7 +372,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_receiving_load_page_command_task_contexts_last_command_received_is_updated() {
+    async fn on_receiving_load_page_command_task_contexts_last_command_received_is_updated_and_task_is_registered() {
         // given
         let stub_page_crawl_command_factory = StubFactory {};
         let tx = PageLoaderService::init_with_factory(Box::new(stub_page_crawl_command_factory));
