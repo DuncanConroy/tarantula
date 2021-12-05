@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use hyper::Uri;
-use log::debug;
+use log::{debug, info};
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -21,8 +21,14 @@ pub trait TaskContextInit {
     fn init(run_config: RunConfig, uuid: Uuid, response_channel: Sender<CrawlerEvent>) -> Self;
 }
 
-pub trait TaskContext: Sync + Send {
-    fn get_uuid_clone(&self) -> Uuid;
+pub trait Registrar: Sync + Send {
+    fn register_crawl_command(&self, uuid: Uuid, url: String);
+    fn unregister_crawl_command(&self, uuid: Uuid);
+    fn get_registered_tasks(&self) -> usize;
+}
+
+pub trait TaskContext: Sync + Send + Registrar {
+    fn get_uuid(&self) -> Uuid;
     fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
     fn get_url(&self) -> String;
     fn get_last_command_received(&self) -> Instant;
@@ -43,12 +49,7 @@ pub trait KnownLinks: Sync + Send {
     fn add_crawled_link(&self, link: String);
 }
 
-pub trait Registrar: Sync+Send{
-    fn register_crawl_command(&self, uuid:Uuid);
-    fn unregister_crawl_command(&self, uuid:Uuid);
-}
-
-pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + RobotsTxt +Registrar{}
+pub trait FullTaskContext: TaskContext + TaskContextServices + KnownLinks + RobotsTxt {}
 
 #[derive(Clone)]
 pub struct DefaultTaskContext {
@@ -84,16 +85,16 @@ impl TaskContextInit for DefaultTaskContext {
             http_client,
             uuid,
             last_command_received: Instant::now(),
-            all_crawled_links:Arc::new(Mutex::new(vec![])),
-            all_tasked_links:Arc::new(Mutex::new(vec![])),
+            all_crawled_links: Arc::new(Mutex::new(vec![])),
+            all_tasked_links: Arc::new(Mutex::new(vec![])),
             response_channel,
-            crawl_commands: Arc::new(Mutex::new(vec![]))
+            crawl_commands: Arc::new(Mutex::new(vec![])),
         }
     }
 }
 
 impl TaskContext for DefaultTaskContext {
-    fn get_uuid_clone(&self) -> Uuid {
+    fn get_uuid(&self) -> Uuid {
         self.uuid.clone()
     }
 
@@ -154,14 +155,24 @@ impl RobotsTxt for DefaultTaskContext {
 }
 
 impl Registrar for DefaultTaskContext {
-    fn register_crawl_command(&self, uuid: Uuid) {
+    fn register_crawl_command(&self, uuid: Uuid, url: String) {
         self.crawl_commands.lock().unwrap().push(uuid);
+        info!("Task [{}] Registered crawl command {}: {}", &self.uuid, &uuid, url);
+        info!("{:?}", &self.crawl_commands.lock().unwrap());
     }
 
     fn unregister_crawl_command(&self, uuid: Uuid) {
-        if let Ok(index) = &self.crawl_commands.lock().unwrap().binary_search(&uuid) {
-            self.crawl_commands.lock().unwrap().swap_remove(*index);
+        let mut lock = self.crawl_commands.lock().unwrap();
+        if let Ok(index) = lock.binary_search(&uuid) {
+            lock.swap_remove(index);
+            info!("Task [{}] Unregistered crawl command {}", &self.uuid, &uuid);
+            info!("{:?}", &lock);
         }
+    }
+
+    fn get_registered_tasks(&self) -> usize {
+        info!("{:?}", &self.crawl_commands.lock().unwrap());
+        self.crawl_commands.lock().unwrap().len()
     }
 }
 

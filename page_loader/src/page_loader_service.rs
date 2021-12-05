@@ -54,7 +54,7 @@ pub struct PageLoaderService {
 impl PageLoaderService {
     fn new() -> PageLoaderService {
         PageLoaderService {
-            task_manager: Box::new(DefaultTaskManager::init(60_000)),
+            task_manager: Box::new(DefaultTaskManager::init(6_000)),
         }
     }
 
@@ -114,19 +114,21 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
     debug!("got url: {:?}", url);
 
     let http_client = page_crawl_command.get_task_context().lock().unwrap().get_http_client();
-    let task_context_uuid = page_crawl_command.get_task_context().lock().unwrap().get_uuid_clone();
+    let task_context_uuid = page_crawl_command.get_task_context().lock().unwrap().get_uuid();
     let page_response = page_crawl_command.crawl(http_client, task_context_uuid, robots_txt_info_url).await;
     if let Ok(page_response_result) = page_response {
         if let Some(crawl_result) = page_response_result {
-            consume_crawl_result(&response_channel, &page_crawl_command, &tx, crawl_result).await
+            consume_crawl_result(&response_channel, &page_crawl_command, &tx, crawl_result).await;
         } else {
             debug!("Link skipped - already known");
         }
     } else {
         // todo!("Proper error handling is required!");
-        page_crawl_command.get_task_context().lock().unwrap().unregister_crawl_command(page_crawl_command.get_uuid_clone());
         error!("No page response from http call");
     }
+
+    let uuid = page_crawl_command.get_uuid_clone();
+    page_crawl_command.get_task_context().lock().unwrap().unregister_crawl_command(uuid);
 
     // dropping of these channels cannot be tested. therefore take double care with them!
     drop(tx);
@@ -135,7 +137,7 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
 
 async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_crawl_command: &Box<dyn CrawlCommand>, tx: &Sender<PageLoaderServiceCommand>, crawl_result: PageResponse) {
     let task_context = page_crawl_command.get_task_context();
-    add_links_to_known_list(&mut page_crawl_command.get_task_context().lock().unwrap()
+    add_links_to_known_list(&mut task_context.lock().unwrap()
         .get_all_crawled_links().lock().unwrap(), &crawl_result);
     let links = crawl_result.borrow().links.clone();
     let max_crawl_depth = task_context.lock().unwrap().get_config().lock().unwrap().maximum_depth;
@@ -164,13 +166,13 @@ async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_craw
     }
     let send_result = response_channel.send(PageEvent { page_response: crawl_result }).await;
     if send_result.is_err() {
-        warn!("Couldn't send PageResponse for TaskContext {}, PageCrawlCommand id {}, requested_url: {}", page_crawl_command.get_task_context().as_ref().lock().unwrap().get_uuid_clone(),
+        warn!("Couldn't send PageResponse for TaskContext {}, PageCrawlCommand id {}, requested_url: {}",
+            &page_crawl_command.get_task_context().as_ref().lock().unwrap().get_uuid(),
             page_crawl_command.get_uuid_clone(), page_crawl_command.get_url_clone());
     } else {
         debug!("all_known_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_crawled_links().lock().unwrap().len());
         debug!("all_tasked_links: {}", page_crawl_command.get_task_context().lock().unwrap().get_all_tasked_links().lock().unwrap().len());
     }
-    page_crawl_command.get_task_context().lock().unwrap().unregister_crawl_command(page_crawl_command.get_uuid_clone());
 }
 
 fn prepare_load_command(response_channel: &Sender<CrawlerEvent>, page_crawl_command: &Box<dyn CrawlCommand>, task_context: Arc<Mutex<dyn FullTaskContext>>, link: &Link) -> (String, PageLoaderServiceCommand) {
