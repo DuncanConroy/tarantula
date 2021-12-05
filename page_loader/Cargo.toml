@@ -12,10 +12,10 @@ dom_parser = { path = "../dom_parser" }
 linkresult = { path = "../linkresult" }
 responses = { path = "../responses" }
 # external
-async-trait = "0.1.50"
+async-trait = "0.1.51"
 chrono = "0.4.19"
 futures = "0.3.17"
-hyper = { version = "0.14.11", features = ["full"] }
+hyper = { version = "0.14.15", features = ["full"] }
 hyper-tls = "0.5.0"
 log = "0.4.14"
 log4rs = "1.0.0"
