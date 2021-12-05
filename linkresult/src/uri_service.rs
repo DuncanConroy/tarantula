@@ -22,6 +22,7 @@ impl UriService {
     pub fn form_full_url(&self, protocol: &str, uri: &str, host: &str, parent_uri: &Option<String>) -> Uri {
         trace!("form_full_url {}, {}, {}, {:?}", protocol, uri, host, parent_uri);
         let pre_cleaned_uri = pre_clean_uri(host, uri);
+        let protocol_internal = if pre_cleaned_uri.starts_with("https://") { "https" } else if pre_cleaned_uri.starts_with("http://") { "http" } else { protocol };
         trace!("pre_cleaned uri {}", pre_cleaned_uri);
         let to_uri = |input: &str| {
             match String::from(input).parse::<hyper::Uri>() {
@@ -32,18 +33,18 @@ impl UriService {
         let do_normalize = |uri: &str, parent_uri: &Option<String>| -> Uri {
             let normalized_uri = normalize_url(uri.into(), parent_uri);
             let adjusted_uri = prefix_uri_with_forward_slash(&normalized_uri);
-            to_uri(&create_uri_string(protocol, host, &adjusted_uri))
+            to_uri(&create_uri_string(protocol_internal, host, &adjusted_uri))
         };
 
         if let Some(scope) = self.link_type_checker.get_uri_scope(host, &pre_cleaned_uri) {
             return match scope {
-                UriScope::Root => to_uri(&create_uri_string(protocol, host, "/")),
+                UriScope::Root => to_uri(&create_uri_string(protocol_internal, host, "/")),
                 UriScope::SameDomain => do_normalize(&pre_cleaned_uri, parent_uri),
                 UriScope::Anchor => do_normalize(&pre_cleaned_uri, parent_uri),
                 _ => {
                     if let Some(uri_protocol) = self.link_type_checker.get_uri_protocol(protocol, &pre_cleaned_uri) {
                         if uri_protocol == UriProtocol::IMPLICIT {
-                            return format!("{}:{}", protocol, pre_cleaned_uri).parse::<hyper::Uri>().unwrap();
+                            return format!("{}:{}", protocol_internal, pre_cleaned_uri).parse::<hyper::Uri>().unwrap();
                         }
                     }
                     to_uri(&pre_cleaned_uri)
@@ -73,14 +74,14 @@ fn pre_clean_uri(host: &str, uri: &str) -> String {
     let mut cleaned_uri = String::from(uri);
 
     if cleaned_uri.contains("?") {
-        let parts:Vec<_> = cleaned_uri.split("?").collect();
+        let parts: Vec<_> = cleaned_uri.split("?").collect();
         let cleaned_front_part = pre_clean_uri(host, parts.first().unwrap());
         let cleaned_last_parts = urlencoding::encode(&parts[1..].join("")).into_owned()
-            .replace("%3D","=");
+            .replace("%3D", "=");
         cleaned_uri = format!("{}?{}", cleaned_front_part, cleaned_last_parts);
     }
 
-    let mut protocol="";
+    let mut protocol = "";
     if cleaned_uri.starts_with("http://") {
         protocol = "http://";
         cleaned_uri = cleaned_uri.replace("http://", "");
@@ -100,7 +101,7 @@ fn pre_clean_uri(host: &str, uri: &str) -> String {
         cleaned_uri = cleaned_uri[1..].into();
     }
 
-    format!("{}{}",protocol, cleaned_uri)
+    format!("{}{}", protocol, cleaned_uri)
 }
 
 fn normalize_url(uri: String, parent_uri: &Option<String>) -> String {
@@ -166,6 +167,7 @@ mod tests {
             ("/#foo", "https://example.com/#foo"),
             ("example.com", "https://example.com/"),
             ("https://example.com/", "https://example.com/"),
+            ("http://example.com/http-downgrade", "http://example.com/http-downgrade"),
             ("https://example.com/ausgabe/example-com-59-straight-outta-office/", "https://example.com/ausgabe/example-com-59-straight-outta-office/"),
             ("https://example.com/events/", "https://example.com/events/"),
             ("https://faq.example.com/", "https://faq.example.com/"),
@@ -184,6 +186,27 @@ mod tests {
                 let formatted = format!("{}{}", host, uri);
                 let scope = link_type_checker.get_uri_scope(host, &formatted);
                 assert_eq!(&result, expected, "{} should be {} :: {:?}", uri, expected, scope.unwrap());
+            });
+    }
+
+    #[test]
+    fn use_protocol_from_full_url() {
+        let input = vec![
+            ("http", "https://example.com", "https://example.com/"),
+            ("https", "https://example.com", "https://example.com/"),
+            ("https", "http://example.com", "http://example.com/"),
+            ("http", "http://example.com", "http://example.com/"),
+        ];
+
+        let host = "example.com";
+        let link_type_checker = Arc::new(LinkTypeChecker::new(host));
+        let instance = UriService::new(link_type_checker.clone());
+        input.iter()
+            .for_each(|(protocol, uri, expected)| {
+                let result = instance.form_full_url(protocol, uri, host, &Some(String::from("")));
+                let formatted = format!("{}{}", host, uri);
+                let scope = link_type_checker.get_uri_scope(host, &formatted);
+                assert_eq!(&result, expected, "{} should be {} :: {:?}", result, expected, scope.unwrap());
             });
     }
 
