@@ -163,11 +163,9 @@ impl Registrar for DefaultTaskContext {
 
     fn unregister_crawl_command(&self, uuid: Uuid) {
         let mut lock = self.crawl_commands.lock().unwrap();
-        if let Ok(index) = lock.binary_search(&uuid) {
-            lock.swap_remove(index);
-            info!("Task [{}] Unregistered crawl command {}", &self.uuid, &uuid);
-            info!("{:?}", &lock);
-        }
+        debug!("UNREG CALLED. length: {}", lock.len());
+        lock.retain(|value| value != &uuid);
+        debug!("UNREG DONE. length: {}", lock.len());
     }
 
     fn get_registered_tasks(&self) -> usize {

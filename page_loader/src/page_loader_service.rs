@@ -54,7 +54,7 @@ pub struct PageLoaderService {
 impl PageLoaderService {
     fn new() -> PageLoaderService {
         PageLoaderService {
-            task_manager: Box::new(DefaultTaskManager::init(6_000)),
+            task_manager: Box::new(DefaultTaskManager::init(60_000)),
         }
     }
 
@@ -101,8 +101,11 @@ impl PageLoaderService {
         let local_command_factory = arc_command_factory.clone();
         tokio::spawn(async move {
             let robots_txt_info_url = task_context.lock().unwrap().get_config().lock().unwrap().robots_txt_info_url.clone();
-            let page_crawl_command = local_command_factory.create_page_crawl_command(url, raw_url, task_context, current_depth);
+            let page_crawl_command = local_command_factory.create_page_crawl_command(url.clone(), raw_url, task_context.clone(), current_depth);
+            let uuid = page_crawl_command.get_uuid_clone();
+            task_context.lock().unwrap().register_crawl_command(uuid, url.clone());
             do_load(response_channel, page_crawl_command, tx_task, robots_txt_info_url).await;
+            task_context.lock().unwrap().unregister_crawl_command(uuid);
         });// Don't await here. Otherwise all processes might hang indefinitely
     }
 }
@@ -113,8 +116,6 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
 
     // updated last_command_received for garbage collection handling
     page_crawl_command.get_task_context().lock().unwrap().set_last_command_received(Instant::now());
-    page_crawl_command.get_task_context().lock().unwrap().register_crawl_command(page_crawl_command.as_ref().get_uuid_clone(), url.clone());
-
     let http_client = page_crawl_command.get_task_context().lock().unwrap().get_http_client();
     let task_context_uuid = page_crawl_command.get_task_context().lock().unwrap().get_uuid();
     let page_response = page_crawl_command.crawl(http_client, task_context_uuid, robots_txt_info_url).await;
@@ -128,9 +129,6 @@ async fn do_load(response_channel: Sender<CrawlerEvent>, page_crawl_command: Box
         // todo!("Proper error handling is required!");
         error!("No page response from http call");
     }
-
-    let uuid = page_crawl_command.get_uuid_clone();
-    page_crawl_command.get_task_context().lock().unwrap().unregister_crawl_command(uuid);
 
     // dropping of these channels cannot be tested. therefore take double care with them!
     drop(tx);
