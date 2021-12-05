@@ -158,14 +158,11 @@ impl Registrar for DefaultTaskContext {
     fn register_crawl_command(&self, uuid: Uuid, url: String) {
         self.crawl_commands.lock().unwrap().push(uuid);
         info!("Task [{}] Registered crawl command {}: {}", &self.uuid, &uuid, url);
-        info!("{:?}", &self.crawl_commands.lock().unwrap());
     }
 
     fn unregister_crawl_command(&self, uuid: Uuid) {
         let mut lock = self.crawl_commands.lock().unwrap();
-        debug!("UNREG CALLED. length: {}", lock.len());
         lock.retain(|value| value != &uuid);
-        debug!("UNREG DONE. length: {}", lock.len());
     }
 
     fn get_registered_tasks(&self) -> usize {
