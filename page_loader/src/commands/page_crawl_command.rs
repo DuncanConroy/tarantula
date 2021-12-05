@@ -57,10 +57,8 @@ impl PageCrawlCommand {
             current_depth,
             fetch_header_command,
             page_download_command,
-            uuid: uuid.clone(),
+            uuid,
         };
-
-        task_context.lock().unwrap().register_crawl_command(uuid, url.clone());
 
         instance
     }
