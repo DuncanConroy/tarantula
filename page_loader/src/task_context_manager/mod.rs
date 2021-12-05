@@ -24,7 +24,7 @@ pub struct DefaultTaskManager {
 
 impl TaskManager for DefaultTaskManager {
     fn add_task(&mut self, task: Arc<Mutex<dyn TaskContext>>) {
-        let key = task.lock().unwrap().get_uuid_clone().to_string();
+        let key = task.lock().unwrap().get_uuid().to_string();
         debug!("Strong pointers to task {} before insert: {}", &key, Arc::strong_count(&task));
         self.tasks.lock().unwrap().insert(key.clone(), task);
     }
@@ -64,12 +64,15 @@ impl DefaultTaskManager {
         info!("Active tasks uuids: {:?}", self.tasks.lock().unwrap().keys());
         let mut to_gc = vec![];
         for (key, value) in self.tasks.lock().unwrap().iter() {
-            if value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms) {
-                let uuid = value.lock().unwrap().get_uuid_clone();
+            let can_gc = value.lock().unwrap().can_be_garbage_collected(self.gc_timeout_ms);
+            let uuid = value.lock().unwrap().get_uuid();
+            let registered_tasks = value.lock().unwrap().get_registered_tasks();
+            info!("Active crawl commands for task {}: {}", key, registered_tasks);
+            if can_gc {
                 if let Err(error) = value.lock().unwrap()
                     .get_response_channel()
                     .blocking_send(CrawlerEvent::CompleteEvent { uuid: uuid.clone() }) {
-                    error!("Error while sending CompleteEvent to channel of task {}, error: {}", uuid, error);
+                    error!("Error while sending CompleteEvent to channel of task {}, error: {}", &uuid, error);
                 }
                 to_gc.push(key.clone());
             }
@@ -97,20 +100,25 @@ mod tests {
     use uuid::Uuid;
 
     use crate::events::crawler_event::CrawlerEvent;
-    use crate::task_context::task_context::{TaskConfig, TaskContext};
+    use crate::task_context::task_context::{Registrar, TaskConfig, TaskContext};
 
     use super::*;
 
     mock! {
         MyTaskContext {}
         impl TaskContext for MyTaskContext {
-            fn get_uuid_clone(&self) -> Uuid;
+            fn get_uuid(&self) -> Uuid;
             fn get_config(&self) -> Arc<Mutex<TaskConfig>>;
             fn get_url(&self)->String;
             fn get_last_command_received(&self) -> Instant;
             fn set_last_command_received(&mut self, instant: Instant);
             fn can_be_garbage_collected(&self, gc_timeout_ms: u64)-> bool;
             fn get_response_channel(&self) -> &Sender<CrawlerEvent>;
+        }
+        impl Registrar for MyTaskContext {
+            fn register_crawl_command(&self, uuid: Uuid, url: String);
+            fn unregister_crawl_command(&self, uuid: Uuid);
+            fn get_registered_tasks(&self) -> usize;
         }
     }
 
@@ -124,7 +132,9 @@ mod tests {
                                                                        gc_timeout_ms: u64| true);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
         mock_task_context.expect_get_response_channel().return_const(resp_tx);
-        mock_task_context.expect_get_uuid_clone().return_const(expected_uuid);
+        mock_task_context.expect_get_uuid().return_const(expected_uuid);
+        mock_task_context.expect_get_registered_tasks().return_const(0 as usize);
+
         let task_context = Arc::new(Mutex::new(mock_task_context));
         let gc_timeout_ms = 100u64;
         let task_manager = DefaultTaskManager::init(gc_timeout_ms);
@@ -155,7 +165,8 @@ mod tests {
         mock_task_context.expect_can_be_garbage_collected().returning(|#[allow(unused_variables)] // allowing dead code, as we don't use gc_timeout_ms
                                                                        gc_timeout_ms: u64| false);
         mock_task_context.expect_get_url().returning(|| String::from("https://example.com"));
-        mock_task_context.expect_get_uuid_clone().return_const(expected_uuid);
+        mock_task_context.expect_get_uuid().return_const(expected_uuid);
+        mock_task_context.expect_get_registered_tasks().return_const(0 as usize);
 
         let task_context = Arc::new(Mutex::new(mock_task_context));
         let gc_timeout_ms = 100u64;
