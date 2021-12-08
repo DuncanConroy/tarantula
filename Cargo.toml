@@ -11,14 +11,13 @@ members = [
     "dom_parser",
     "linkresult",
     "page_loader",
-    "responses",
     "server",
 ]
 
 [dependencies]
 # internal
 page_loader = { path = "page_loader" }
-responses = { path = "responses" }
+responses = { git = "***REMOVED***" }
 server = { path = "server" }
 # external
 clap = { version = "2.33", features = ["yaml"] }

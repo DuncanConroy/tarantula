@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 # internal
-responses = { path = "../responses" }
+responses = { git = "***REMOVED***" }
 # external
 chrono = "0.4.19"
 ego-tree = "0.6.2"
