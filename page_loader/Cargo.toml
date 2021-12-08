@@ -10,7 +10,7 @@ edition = "2018"
 # internal
 dom_parser = { path = "../dom_parser" }
 linkresult = { path = "../linkresult" }
-responses = { path = "../responses" }
+responses = { git = "https://lechuck.hopto.org:2443/DuncanConroy/tarantula-responses/" }
 # external
 async-trait = "0.1.51"
 chrono = "0.4.19"
