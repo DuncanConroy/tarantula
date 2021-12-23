@@ -17,10 +17,9 @@ async fn main() -> DynResult<()> {
 
     let mut file = File::create("process.pid").unwrap();
     file.write_all(process::id().to_string().as_bytes()).unwrap();
-    let log_init = log4rs::init_file("config/log4rs.yaml", Default::default());
-    if log_init.is_ok() {
-        log_init.unwrap();
-    }
+
+    init_log();
+
     info!("Starting tarantula");
 
     let page_loader_tx_channel = PageLoaderService::init();
@@ -30,4 +29,11 @@ async fn main() -> DynResult<()> {
         .await;
 
     Ok(())
+}
+
+fn init_log() {
+    let log_init = log4rs::init_file("config/log4rs.yaml", Default::default());
+    if log_init.is_ok() {
+        log_init.unwrap();
+    }
 }
