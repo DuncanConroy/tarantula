@@ -2,7 +2,7 @@
 name = "tarantula"
 version = "0.1.0"
 authors = ["Daniel Bunte (@DuncanConroy) <daniel.bunte.84+github@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -21,7 +21,6 @@ responses = { git = "https://lechuck.hopto.org:2443/DuncanConroy/tarantula-respo
 server = { path = "server" }
 # external
 console-subscriber = "^0.1.0"
-clap = { version = "2.34.0", features = ["yaml"] }
 hyper = { version = "^0.14.16", features = ["full"] }
 hyper-tls = "^0.5.0"
 log = "0.4.14"
