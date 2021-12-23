@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use log::trace;
-
 use responses::get_response::GetResponse;
 use responses::response_timings::ResponseTimings;
+use tracing::trace;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;

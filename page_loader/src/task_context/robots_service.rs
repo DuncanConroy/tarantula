@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use hyper::{Body, Client, Request, StatusCode, Uri};
 use hyper::header::USER_AGENT;
 use hyper_tls::HttpsConnector;
-use log::{debug, info, warn};
 use robotstxt_with_cache::{DefaultCachingMatcher, DefaultMatcher};
+use tracing::{debug, info, warn};
 
 #[async_trait]
 pub trait RobotsTxtInit {

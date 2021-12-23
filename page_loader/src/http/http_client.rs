@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use hyper::{Body, Client, Request, Response};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
-use log::debug;
 use rand::random;
+use tracing::debug;
 
 #[async_trait]
 pub trait HttpClient: Sync + Send {

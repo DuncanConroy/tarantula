@@ -4,16 +4,15 @@ use std::cmp::max;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
 
-use log::{debug, error, warn};
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
-use tokio::time::Instant;
-use uuid::Uuid;
-
 use responses::link::Link;
 use responses::page_response::PageResponse;
 use responses::run_config::RunConfig;
 use responses::uri_scope::UriScope;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
+use tracing::{debug, error, warn};
+use uuid::Uuid;
 
 use crate::commands::fetch_header_command::DefaultFetchHeaderCommand;
 use crate::commands::page_crawl_command::{CrawlCommand, PageCrawlCommand};
@@ -242,9 +241,8 @@ impl fmt::Debug for PageLoaderServiceCommand {
 mod tests {
     use async_trait::async_trait;
     use hyper::Error;
-    use uuid::Uuid;
-
     use responses::link::Link;
+    use uuid::Uuid;
 
     use crate::http::http_client::HttpClient;
     use crate::page_loader_service::PageLoaderServiceCommand::{CrawlDomainCommand, LoadPageCommand};

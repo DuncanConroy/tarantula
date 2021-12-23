@@ -5,15 +5,15 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::Error;
 use hyper::header::CONTENT_TYPE;
-use log::debug;
-use uuid::Uuid;
-
-use dom_parser::DomParser;
 use responses::crawl_status::CrawlStatus;
 use responses::get_response::GetResponse;
 use responses::link::Link;
 use responses::page_response::PageResponse;
 use responses::status_code::StatusCode;
+use tracing::debug;
+use uuid::Uuid;
+
+use dom_parser::DomParser;
 
 use crate::commands::fetch_header_command::{FetchHeaderCommand, HeadResponseResult};
 use crate::commands::page_download_command::PageDownloadCommand;
@@ -223,6 +223,9 @@ mod tests {
     use hyper::{Body, Response};
     use hyper::header::CONTENT_TYPE;
     use mockall::*;
+    use responses::get_response::GetResponse;
+    use responses::head_response::HeadResponse;
+    use responses::redirect::Redirect;
     use tokio::sync::mpsc::Sender;
     use tokio::time::Instant;
     use uuid::Uuid;
@@ -231,9 +234,6 @@ mod tests {
     use linkresult::link_type_checker::LinkTypeChecker;
     use linkresult::uri_result::UriResult;
     use linkresult::uri_service::UriService;
-    use responses::get_response::GetResponse;
-    use responses::head_response::HeadResponse;
-    use responses::redirect::Redirect;
 
     use crate::commands::page_crawl_command::{CrawlCommand, HeadResponseResult, PageCrawlCommand};
     use crate::events::crawler_event::CrawlerEvent;

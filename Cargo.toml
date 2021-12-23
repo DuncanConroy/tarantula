@@ -23,11 +23,11 @@ server = { path = "server" }
 console-subscriber = "^0.1.0"
 hyper = { version = "^0.14.16", features = ["full"] }
 hyper-tls = "^0.5.0"
-log = "0.4.14"
-log4rs = "1.0.0"
 num_cpus = "1.13.1"
 rocket = "0.5.0-rc.1"
 tokio = { version = "^1.15.0", features = ["full", "tracing"] }
+tracing = "^0.1.29"
+tracing-log = "^0.1.2"
 tracing-subscriber = "^0.3.3"
 
 [dev-dependencies]

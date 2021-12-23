@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 
 use crate::events::crawler_event::CrawlerEvent;
 use crate::task_context::task_context::TaskContext;

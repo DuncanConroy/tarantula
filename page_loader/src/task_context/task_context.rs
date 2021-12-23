@@ -3,15 +3,15 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use hyper::Uri;
-use log::{debug, info};
+use responses::run_config::RunConfig;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use dom_parser::{DomParser, DomParserService};
 use linkresult::link_type_checker::LinkTypeChecker;
 use linkresult::uri_service::UriService;
-use responses::run_config::RunConfig;
 
 use crate::events::crawler_event::CrawlerEvent;
 use crate::http::http_client::{HttpClient, HttpClientImpl};
