@@ -13,9 +13,14 @@ pub type DynResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send 
 
 #[rocket::main]
 async fn main() -> DynResult<()> {
+    // console_subscriber::init();
+
     let mut file = File::create("process.pid").unwrap();
     file.write_all(process::id().to_string().as_bytes()).unwrap();
-    log4rs::init_file("config/log4rs.yaml", Default::default()).unwrap();
+    let log_init = log4rs::init_file("config/log4rs.yaml", Default::default());
+    if log_init.is_ok() {
+        log_init.unwrap();
+    }
     info!("Starting tarantula");
 
     let page_loader_tx_channel = PageLoaderService::init();
