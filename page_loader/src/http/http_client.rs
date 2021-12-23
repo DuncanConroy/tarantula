@@ -15,20 +15,11 @@ pub trait HttpClient: Sync + Send {
     async fn get(&self, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>>;
 }
 
-struct Singularity {
-    url: Option<String>,
-}
-
-unsafe impl Sync for Singularity {}
-
-unsafe impl Send for Singularity {}
-
 pub struct HttpClientImpl {
     user_agent: String,
     client: Client<HttpsConnector<HttpConnector>>,
     rate_limiting_ms: usize,
     last_request_timestamp: Arc<Mutex<Option<Instant>>>,
-    singularity_lock: Arc<Mutex<Singularity>>,
 }
 
 impl HttpClientImpl {
@@ -51,52 +42,43 @@ impl HttpClientImpl {
             client: Client::builder().build::<_, hyper::Body>(connector),
             rate_limiting_ms,
             last_request_timestamp: Arc::new(Mutex::new(Some(Instant::now().sub(Duration::from_millis(rate_limiting_ms as u64))))),
-            singularity_lock: Arc::new(Mutex::new(Singularity { url: None })),
         }
     }
 
     async fn send_request(&self, method: &str, uri: String, robots_txt_info_url: Option<String>) -> hyper::Result<Response<Body>> {
-        'retry: loop {
-            if self.is_blocked() {
-                let sleep_duration = (random::<f64>() * self.rate_limiting_ms as f64) as u64 + self.rate_limiting_ms as u64;
-                debug!("Rate limiting request {}. Random limit: {}ms; Config Setting: {}ms", uri, sleep_duration, self.rate_limiting_ms);
-                tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
-            } else if self.singularity_lock.lock().unwrap().url.is_none() {
-                self.singularity_lock.lock().unwrap().url.replace(uri.clone());
-
-                let user_agent_string = format!("{}{}", self.user_agent,
-                                                robots_txt_info_url
-                                                    .map_or("".into(),
-                                                            |it| format!(" +{}", it)));
-
-                let req = Request::builder()
-                    .header("user-agent", user_agent_string)
-                    .method(method)
-                    .uri(uri.clone())
-                    .body(Body::from(""))
-                    .expect(&format!("{} request builder", method));
-
-                debug!("request {}", uri);
-                let result = self.client.request(req).await;
-                let instant = self.last_request_timestamp.lock().unwrap().unwrap();
-                debug!("request end {}, last_request_timestamp {:?}", uri,instant);
-                self.last_request_timestamp.lock().unwrap().replace(Instant::now());
-                let instant = self.last_request_timestamp.lock().unwrap().unwrap();
-                debug!("request end {}, last_request_timestamp {:?}", uri,instant);
-
-                self.singularity_lock.lock().unwrap().url.take();
-
-                return result;
-            }
-
-            continue 'retry;
+        while self.is_blocked() {
+            let sleep_duration = (random::<f64>() * self.rate_limiting_ms as f64) as u64 + self.rate_limiting_ms as u64;
+            debug!("Rate limiting request {}. Random limit: {}ms; Config Setting: {}ms", uri, sleep_duration, self.rate_limiting_ms);
+            // tokio::time::sleep(Duration::from_millis(sleep_duration)).await;
+            tokio::task::yield_now().await;
         }
+
+        let user_agent_string = format!("{}{}", self.user_agent,
+                                        robots_txt_info_url
+                                            .map_or("".into(),
+                                                    |it| format!(" +{}", it)));
+
+        let req = Request::builder()
+            .header("user-agent", user_agent_string)
+            .method(method)
+            .uri(uri.clone())
+            .body(Body::from(""))
+            .expect(&format!("{} request builder", method));
+
+        debug!("request {}", uri);
+        let result = self.client.request(req).await;
+        let instant = self.last_request_timestamp.lock().unwrap().unwrap();
+        debug!("request end {}, last_request_timestamp {:?}", uri,instant);
+        self.last_request_timestamp.lock().unwrap().replace(Instant::now());
+        let instant = self.last_request_timestamp.lock().unwrap().unwrap();
+        debug!("request end {}, last_request_timestamp {:?}", uri,instant);
+
+        result
     }
 
     fn is_blocked(&self) -> bool {
         debug!("is_blocked: elapsed {}", self.last_request_timestamp.lock().unwrap().unwrap().elapsed().as_millis());
-        self.singularity_lock.lock().unwrap().url.is_some()
-            || self.last_request_timestamp.lock().unwrap().unwrap()
+        self.last_request_timestamp.lock().unwrap().unwrap()
             .elapsed().as_millis() <= self.rate_limiting_ms as u128
     }
 }
@@ -153,8 +135,6 @@ mod tests {
         ordered_times.sort_by(|a, b| a.lock().unwrap().unwrap().cmp(&b.lock().unwrap().unwrap()));
         let second_first_diff = ordered_times[1].lock().unwrap().unwrap().duration_since(ordered_times[0].lock().unwrap().unwrap()).as_millis();
         let third_second_diff = ordered_times[2].lock().unwrap().unwrap().duration_since(ordered_times[1].lock().unwrap().unwrap()).as_millis();
-        // println!("second_first_diff {}", second_first_diff);
-        // println!("third_second_diff {}", third_second_diff);
         assert_eq!(second_first_diff >= rate_limit as u128, true);
         assert_eq!(third_second_diff >= rate_limit as u128, true);
     }
