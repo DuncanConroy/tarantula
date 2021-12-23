@@ -20,14 +20,16 @@ page_loader = { path = "page_loader" }
 responses = { git = "***REMOVED***" }
 server = { path = "server" }
 # external
-clap = { version = "2.33", features = ["yaml"] }
-hyper = { version = "^0.14.15", features = ["full"] }
+console-subscriber = "^0.1.0"
+clap = { version = "2.34.0", features = ["yaml"] }
+hyper = { version = "^0.14.16", features = ["full"] }
 hyper-tls = "^0.5.0"
 log = "0.4.14"
 log4rs = "1.0.0"
-num_cpus = "1.13.0"
+num_cpus = "1.13.1"
 rocket = "0.5.0-rc.1"
-tokio = { version = "^1", features = ["full"] }
+tokio = { version = "^1.15.0", features = ["full", "tracing"] }
+tracing-subscriber = "^0.3.3"
 
 [dev-dependencies]
 testutils = { path = "testutils" }
