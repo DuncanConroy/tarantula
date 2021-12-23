@@ -6,13 +6,13 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hyper::{Body, Response, Uri};
 use hyper::header::HeaderValue;
-use log::{debug, info, trace};
-
-use linkresult::uri_service::UriService;
 use responses::head_response::HeadResponse;
 use responses::redirect::Redirect;
 use responses::response_timings::ResponseTimings;
 use responses::status_code::StatusCode;
+use tracing::{debug, info, trace};
+
+use linkresult::uri_service::UriService;
 
 use crate::http::http_client::HttpClient;
 use crate::http::http_utils;

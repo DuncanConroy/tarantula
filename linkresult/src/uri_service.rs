@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use hyper::Uri;
-use log::trace;
-
 use responses::uri_protocol::UriProtocol;
 use responses::uri_scope::UriScope;
+use tracing::trace;
 
 use crate::link_type_checker::LinkTypeChecker;
 

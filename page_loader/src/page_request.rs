@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use hyper::Uri;
-use log::trace;
+use tracing::trace;
 
 use crate::task_context::task_context::FullTaskContext;
 
