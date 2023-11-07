@@ -1820,7 +1820,6 @@ dependencies = [
 [[package]]
 name = "responses"
 version = "0.1.0"
-source = "git+***REMOVED***#1adfb8f5727301543e4276744866d68f31d21906"
 dependencies = [
  "chrono",
  "serde",

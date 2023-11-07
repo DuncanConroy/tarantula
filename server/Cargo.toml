@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 # internal
 page_loader = { path = "../page_loader" }
-responses = { git = "***REMOVED***" }
+responses = { path = "../responses" }
 # external
 hyper = { version = "0.14.16", features = ["full"] }
 hyper-tls = "0.5.0"

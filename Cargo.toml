@@ -12,12 +12,13 @@ members = [
     "linkresult",
     "page_loader",
     "server",
+    "responses",
 ]
 
 [dependencies]
 # internal
 page_loader = { path = "page_loader" }
-responses = { git = "***REMOVED***" }
+responses = { path = "responses" }
 server = { path = "server" }
 # external
 console-subscriber = "^0.1.0"

@@ -15,7 +15,7 @@ RunConfig structure:
 "ignore_robots_txt": false,
 "keep_html_in_memory": false,
 "user_agent": "testbanane",
-"callback": "https://***REMOVED***/crawl-results"
+"callback": "https://yourhost/crawl-results"
 }
 
 The callback inside the RunConfig will be called with POST and the structure of PageResponse (page_loader::PageResponse)

@@ -10,7 +10,7 @@ edition = "2021"
 # internal
 dom_parser = { path = "../dom_parser" }
 linkresult = { path = "../linkresult" }
-responses = { git = "***REMOVED***" }
+responses = { path = "../responses" }
 # external
 async-trait = "0.1.52"
 chrono = "0.4.19"
