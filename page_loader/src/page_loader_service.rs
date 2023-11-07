@@ -1,5 +1,4 @@
 use std::{fmt, thread};
-use std::borrow::Borrow;
 use std::cmp::max;
 use std::fmt::Formatter;
 use std::sync::{Arc, Mutex};
@@ -138,7 +137,7 @@ async fn consume_crawl_result(response_channel: &Sender<CrawlerEvent>, page_craw
     let task_context = page_crawl_command.get_task_context();
     add_links_to_known_list(&mut task_context.lock().unwrap()
         .get_all_crawled_links().lock().unwrap(), &crawl_result);
-    let links = crawl_result.borrow().links.clone();
+    let links = crawl_result.links.clone();
     let max_crawl_depth = task_context.lock().unwrap().get_config().lock().unwrap().maximum_depth;
     if links.is_some() && page_crawl_command.get_current_depth() <= max_crawl_depth {
         let mut links_deduped = links.unwrap();
@@ -408,7 +407,7 @@ mod tests {
         for _ in 0..expected_results.len() {
             if let CrawlerEvent::PageEvent { page_response: actual_result } = resp_rx.recv().await.unwrap() {
                 let expected_result = expected_results
-                    .drain_filter(|it: &mut PageResponse| it.original_requested_url.eq(&actual_result.original_requested_url));
+                    .extract_if(|it: &mut PageResponse| it.original_requested_url.eq(&actual_result.original_requested_url));
                 // println!("Got {:?}", actual_result);
                 assert_eq!(expected_result.count(), 1);
                 actual_results.push(actual_result);

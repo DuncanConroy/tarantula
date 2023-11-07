@@ -24,7 +24,7 @@ pub fn rocket(page_loader_tx_channel: Sender<PageLoaderServiceCommand>) -> Rocke
 #[put("/crawl", data = "<run_config>")]
 pub fn crawl(run_config: Json<RunConfig>, page_loader_tx_channel: &State<Sender<PageLoaderServiceCommand>>) -> status::Accepted<String> {
     let task_context_uuid = Uuid::new_v4();
-    tokio::spawn(process(run_config.0, task_context_uuid.clone(), page_loader_tx_channel.deref().deref().clone()));
+    tokio::spawn(process(run_config.0, task_context_uuid.clone(), page_loader_tx_channel.deref().clone()));
     status::Accepted(Some(format!("{}", task_context_uuid)))
 }
 
@@ -81,7 +81,6 @@ async fn process(run_config: RunConfig, task_context_uuid: Uuid, page_loader_tx_
             }
 
             if do_break { break; }
-            drop(do_break);
         }
         // dropping of these channels cannot be tested. therefore take double care with them!
         resp_rx.close();
